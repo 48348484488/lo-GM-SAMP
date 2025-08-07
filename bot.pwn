@@ -1,31 +1,45 @@
+/*
+	Zombie Bot System v1.2.4
+	Sistema de bots zombies inteligentes para SA-MP
+	
+	Features:
+	- Sistema de IA inteligente para zombies
+	- Diferentes classes de zombies
+	- Sistema de pathfinding com ColAndreas
+	- Sistema de som e atração
+	- Otimizações de performance
+*/
+
 #pragma dynamic 28000
 
-// disable warnings from ZeeX compiler
+// Disable warnings from ZeeX compiler
 #pragma warning disable 239
 #pragma warning disable 214
 
-// Includes
+// ========================================================================
+// INCLUDES
+// ========================================================================
 
 // Local versão
-#include "		../include/a_samp     	"
-#include "		../include/core       	"
-#include "		../include/float      	"
-#include "		../include/string     	"
-#include "		../include/file       	"
-#include "		../include/time       	"
-#include "		../include/datagram   	"
-#include "		../include/a_players  	"
-#include "		../include/a_vehicles 	"
-#include "		../include/a_objects  	"
-#include "		../include/a_actor    	"
-#include "		../include/a_sampdb   	"
-#include "		../include/easynick   	"
-#include "      ../include/sql_easy     "
-#include "      ../include/cuff     	"
+#include "../include/a_samp"
+#include "../include/core"
+#include "../include/float"
+#include "../include/string"
+#include "../include/file"
+#include "../include/time"
+#include "../include/datagram"
+#include "../include/a_players"
+#include "../include/a_vehicles"
+#include "../include/a_objects"
+#include "../include/a_actor"
+#include "../include/a_sampdb"
+#include "../include/easynick"
+#include "../include/sql_easy"
+#include "../include/cuff"
 
 #define NAME_VERSION "v1.2.4"
 
-// Outras includes
+// Outras includes (Third-party)
 #include <sscanf2>          			//   http://forum.sa-mp.com/showthread.php?t=570927
 #include "../include/streamer"
 #include <FCNPC>
@@ -34,6 +48,10 @@
 #include <YSF>
 #include <YSI_Data\y_iterate>
 #include <colandreas>
+
+// ========================================================================
+// CONFIGURAÇÕES E DEFINES
+// ========================================================================
 
 #define ZOMBIE_UPDATE_TIME          (1050)
 #define ZOMBIE_RESPAWN      		(3 * 60000)
@@ -69,6 +87,10 @@
 // Total de nodes por player
 #define MAX_PLAYER_NODES 			(60)
 
+// ========================================================================
+// WEAPON SYSTEM
+// ========================================================================
+
 // Tipos de armas
 #define WEAPON_TYPE_PRIMARY    		(1)
 #define WEAPON_TYPE_SECONDARY  		(2)
@@ -77,6 +99,11 @@
 // Tempo para desaparecer o corpo
 #define TIMER_BODY                  (5 * 60000)
 
+// ========================================================================
+// ZOMBIE SYSTEM DATA
+// ========================================================================
+
+// Posições de spawn dos zombies
 stock const Float:Zombies_Spawns[][3] =
 {
     {452.15240, -1671.57471, 26.23418},
@@ -85,6 +112,7 @@ stock const Float:Zombies_Spawns[][3] =
 };
 new Iterator:ZombieSpawnsIter<sizeof(Zombies_Spawns)>;
 
+// Enum para informações dos zombies
 enum zombie_Enum {
 	zombie_id,
 	zombie_attack,
@@ -114,6 +142,7 @@ enum zombie_Enum {
 }
 new ZombieInfo[MAX_PLAYERS][zombie_Enum];
 
+// Tipos de classes de zombies
 enum {
 	zombie_class_normal,
 	zombie_class_shovel,
@@ -124,9 +153,11 @@ enum {
 }
 
 #define max_classes 75
+// Índices das classes
 new index_class = 0;
 new index_bandidos = 0;
 
+// Enum para informações das classes de zombies
 enum zombieClassEnumInfo {
 
 	// Class id
@@ -160,9 +191,6 @@ new ZombieClassInfo[max_classes][zombieClassEnumInfo];
 
 new tickBarulho;
 new zombiecount;
-
-// Total de nodes por player
-#define MAX_PLAYER_NODES 			(60)
 
 new ZombieNodeIndex[MAX_PLAYERS];
 
@@ -228,7 +256,10 @@ static const stock s_WeaponsPoints[] = {
 	165  // 54 - Splat
 };
 
-//IA inteligente
+// ========================================================================
+// GAMEMODE INITIALIZATION
+// ========================================================================
+
 public OnGameModeInit()
 {
 	// Zombies Class
@@ -249,7 +280,12 @@ public OnGameModeInit()
 	FCNPC_SetTickRate(10);
 	return 1;
 }
-// Módulos
+
+// ========================================================================
+// UTILITY FUNCTIONS
+// ========================================================================
+
+// Função para calcular distância entre dois pontos 3D
 Float:GetPointDistanceToPoint(Float:x1,Float:y1,Float:z1,Float:x2,Float:y2,Float:z2)
 {
 	new Float:x, Float:y, Float:z;
@@ -259,6 +295,17 @@ Float:GetPointDistanceToPoint(Float:x1,Float:y1,Float:z1,Float:x2,Float:y2,Float
   	return floatsqroot(x*x+y*y+z*z);
 }
 
+// Função para gerar números aleatórios float
+stock Float:frandom(Float:max, Float:min = 0.0)
+{
+	return (float(random(floatround(max - min, floatround_floor))) + min);
+}
+
+// ========================================================================
+// ZOMBIE MANAGEMENT FUNCTIONS
+// ========================================================================
+
+// Função para conectar um zombie ao servidor
 stock connectZombieToServer(world=0) {
 
 	new z_name[MAX_PLAYER_NAME];
@@ -307,6 +354,7 @@ stock connectZombieToServer(world=0) {
 	return zo_id;
 }
 
+// Função para inicializar o sistema de zombies
 stock z_Init()
 {
 	for(new index; index < sizeof (Zombies_Spawns); index++) {
@@ -416,41 +464,40 @@ public respawnZombie(npcid)
 }
 public FCNPC_OnUpdate(npcid)
 {
-	new
-	    currentTick = GetTickCount();
+	new currentTick = GetTickCount();
 	if (ZombieInfo[npcid][zombie_lastupdate] < currentTick)
 	{
-        ZombieInfo[npcid][zombie_lastupdate] = currentTick + (190 + random(70));
+		ZombieInfo[npcid][zombie_lastupdate] = currentTick + (190 + random(70));
 
-		if ( ZombieInfo[npcid][zombie_dead] )
-	 	    return 1;
+		if (ZombieInfo[npcid][zombie_dead])
+			return 1;
 
-		if ( FCNPC_IsDead(npcid) )
-		    return 1;
+		if (FCNPC_IsDead(npcid))
+			return 1;
 
-	 	if ( ZombieInfo[npcid][zombie_pause] > currentTick )
-	 	    return 1;
+		if (ZombieInfo[npcid][zombie_pause] > currentTick)
+			return 1;
 
-		if ( ZombieInfo[npcid][zombie_pause_init] > currentTick )
-	 	    return 1;
+		if (ZombieInfo[npcid][zombie_pause_init] > currentTick)
+			return 1;
 
 		if (!FCNPC_IsStreamedInForAnyone(npcid))
-		    return 1;
+			return 1;
 
 		// update zombie follow player
 		if (ZombieInfo[npcid][zombie_attack] != INVALID_PLAYER_ID) {
-        	UpdateZombieFolowPlayer(npcid, ZombieInfo[npcid][zombie_attack]);
+			UpdateZombieFolowPlayer(npcid, ZombieInfo[npcid][zombie_attack]);
 		// update iddle zombie
 		} else {
-		    UpdateZombieIddleMovements(npcid);
+			UpdateZombieIddleMovements(npcid);
 		}
 
-        // sound effect in zombie
+		// sound effect in zombie
 		if(ZombieInfo[npcid][zombie_grito] < GetTickCount() && ZombieInfo[npcid][zombie_class] != zombie_class_bandido) {
-		    // get a position
-	 	    static Float:pos[3];
-	 	    FCNPC_GetPosition(npcid, pos[0], pos[1], pos[2]);
-		    ZombieInfo[npcid][zombie_grito] = GetTickCount() + (8000 + random(9500));
+			// get a position
+			static Float:pos[3];
+			FCNPC_GetPosition(npcid, pos[0], pos[1], pos[2]);
+			ZombieInfo[npcid][zombie_grito] = GetTickCount() + (8000 + random(9500));
 		}
 	}
 	return 1;
@@ -471,27 +518,27 @@ stock UpdateZombieFolowPlayer(zombie, playerid)
 	new zombieFollowPlayer = ZombieInfo[zombie][zombie_attack];
 
 	if (currentClossestPlayer != playerid && IsZombieViewPlayer(zombie, currentClossestPlayer))
-    {
-	    ZombieInfo[zombie][zombie_attack] = currentClossestPlayer;
-	    zombieFollowPlayer = currentClossestPlayer;
+	{
+		ZombieInfo[zombie][zombie_attack] = currentClossestPlayer;
+		zombieFollowPlayer = currentClossestPlayer;
 	}
 
 	if (currentDistanceBetween < ZombieInfo[zombie][zombie_detection])
-    {
-	    // count zombies follow player
-        new countPlayerCurrentFollow = CountZombiesFollowPlayer(zombieFollowPlayer);
+	{
+		// count zombies follow player
+		new countPlayerCurrentFollow = CountZombiesFollowPlayer(zombieFollowPlayer);
 		// check if zombies amount if much
 		if (countPlayerCurrentFollow >= MAX_ZOMBIES_FOLLOW_PLAYER && ZombieInfo[zombie][zombie_attack] != zombieFollowPlayer)
-		    return 0;
+			return 0;
 
- 	    new Float:pos[6];
- 	    // get a player position
- 	    GetPlayerPos(zombieFollowPlayer, pos[0], pos[1], pos[2]);
+		new Float:pos[6];
+		// get a player position
+		GetPlayerPos(zombieFollowPlayer, pos[0], pos[1], pos[2]);
 
- 	    FCNPC_GetPosition(zombie, pos[3], pos[4], pos[5]);
+		FCNPC_GetPosition(zombie, pos[3], pos[4], pos[5]);
 
 		// check if distance is better than zombie radius attack
-		if ( currentDistanceBetween < ZombieInfo[zombie][zombie_alcance] ) {
+		if (currentDistanceBetween < ZombieInfo[zombie][zombie_alcance]) {
 			// check if is a bandido
 			if (ZombieInfo[zombie][zombie_class] == zombie_class_bandido) {
 
@@ -749,7 +796,7 @@ stock StopZombieFollow(zombie) {
 		FCNPC_Stop(zombie);
 
 		// Limpar as animações
-		ClearAnimations(zombie);
+		FCNPC_ClearAnimations(zombie);
 
  	    // Fazer parar de bater
 	    FCNPC_StopAttack(zombie);
@@ -1093,9 +1140,9 @@ public FCNPC_OnSpawn(npcid) {
 
 	return 1;
 }
-     public OnPlayerStreamIn(playerid, forplayerid) {
+public OnPlayerStreamIn(playerid, forplayerid) {
 	if (IsPlayerNPC(playerid) && FCNPC_IsDead(playerid)) {
-	    FCNPC_Kill(playerid);
+		FCNPC_Kill(playerid);
 	}
 	return 1;
 }
@@ -1106,21 +1153,21 @@ public OnPlayerUpdate(playerid)
 	return 1;
 }
 
-    stock addPlayerNode(playerid) {
+stock addPlayerNode(playerid) {
 
 	static Float:x, Float:y, Float:z;
 	GetPlayerPos(playerid, x, y, z);
 
 	for(new player_node = MAX_PLAYER_NODES - 1; player_node > 0; player_node--) {
-	    PlayerNodesX[playerid][player_node] = PlayerNodesX[playerid][player_node - 1];
-	    PlayerNodesY[playerid][player_node] = PlayerNodesY[playerid][player_node - 1];
-	    PlayerNodesZ[playerid][player_node] = PlayerNodesZ[playerid][player_node - 1];
+		PlayerNodesX[playerid][player_node] = PlayerNodesX[playerid][player_node - 1];
+		PlayerNodesY[playerid][player_node] = PlayerNodesY[playerid][player_node - 1];
+		PlayerNodesZ[playerid][player_node] = PlayerNodesZ[playerid][player_node - 1];
 	}
 	PlayerNodesX[playerid][0] = x;
-    PlayerNodesY[playerid][0] = y;
-    PlayerNodesZ[playerid][0] = z;
+	PlayerNodesY[playerid][0] = y;
+	PlayerNodesZ[playerid][0] = z;
 
-    return 1;
+	return 1;
 }
 forward onZombieDeath(zombieid, killerid, weaponid);
 public onZombieDeath(zombieid, killerid, weaponid) {
