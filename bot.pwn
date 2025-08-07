@@ -1,12 +1,14 @@
 #pragma dynamic 28000
 
-// disable warnings from ZeeX compiler
+// Disable warnings from ZeeX compiler
 #pragma warning disable 239
 #pragma warning disable 214
 
-// Includes
+// ========================================
+// INCLUDES
+// ========================================
 
-// Local versão
+// Local version includes
 #include "		../include/a_samp     	"
 #include "		../include/core       	"
 #include "		../include/float      	"
@@ -23,9 +25,7 @@
 #include "      ../include/sql_easy     "
 #include "      ../include/cuff     	"
 
-#define NAME_VERSION "v1.2.4"
-
-// Outras includes
+// External includes
 #include <sscanf2>          			//   http://forum.sa-mp.com/showthread.php?t=570927
 #include "../include/streamer"
 #include <FCNPC>
@@ -35,221 +35,196 @@
 #include <YSI_Data\y_iterate>
 #include <colandreas>
 
-#define ZOMBIE_UPDATE_TIME          (1050)
-#define ZOMBIE_RESPAWN      		(3 * 60000)
-#define NODES_MIN_DISTANCE 			(1.000) // Aprimora a precisão do movimento, más gasta mais slots de nodes
-#define MAX_ZOMBIES 				(380)
-#define MAX_ZOMBIES_FOLLOW_PLAYER   (25)
-#define RNPC_SPEED_ZOMBIE			(0.0048)
-#define ZOMBIE_DISTANCE     		(45.00)
-#define ZOMBIE_DAMAGE_DISTANCE      (1.500)
-#define ZOMBIE_DAMAGE      			(4.0)
-#define NODE_MAX_DISTANCE   		(160.0)
-#define ZOMBIE_LIMIT_NODES  		(350)
-#define MAX_VEHICLE_FUEL            (35)
-#define ZOMBIE_Z_DIFFERENCE_ATTACK 	(3.5)
-#define SERVER_RESTART_TIME         (3 * (60 * 60))// em horas
-#define SERVER_AUTO_MSG_TIME        (2 * 80)
+// ========================================
+// SCRIPT INFORMATION
+// ========================================
+#define NAME_VERSION "v2.0.0"
+#define SCRIPT_NAME "Civilian AI System"
 
-// alturas de barulho
-#define ALTURA_ANDAR 		(20.0)
-#define ALTURA_CORRER 		(45.0)
-#define ALTURA_TIRO 		(80.0)
-#define ALTURA_ASSOBIO 		(55.0)
-#define ALTURA_RADIO 		(30.0)
-#define ALTURA_CARRO 		(75.0)
+// ========================================
+// CIVILIAN SYSTEM CONFIGURATION
+// ========================================
 
-#define MAX_ALTURA_ANDAR 	(7.0)
-#define MAX_ALTURA_CORRER 	(11.0)
-#define MAX_ALTURA_TIRO 	(14.0)
-#define MAX_ALTURA_ASSOBIO 	(13.0)
-#define MAX_ALTURA_RADIO 	(8.0)
-#define MAX_ALTURA_CARRO	(14.0)
+// Update and timing settings
+#define CIVILIAN_UPDATE_TIME          (1050)
+#define CIVILIAN_RESPAWN      		  (3 * 60000)
+#define NODES_MIN_DISTANCE 			  (1.000)
+#define MAX_CIVILIANS 				  (380)
+#define MAX_CIVILIANS_NEAR_PLAYER     (15)
+#define CIVILIAN_SPEED				  (0.0048)
+#define CIVILIAN_DETECTION_DISTANCE   (25.00)
+#define CIVILIAN_INTERACTION_DISTANCE (3.500)
+#define NODE_MAX_DISTANCE   		  (160.0)
+#define CIVILIAN_LIMIT_NODES  		  (350)
+#define MAX_VEHICLE_FUEL              (35)
+#define SERVER_RESTART_TIME           (3 * (60 * 60))
+#define SERVER_AUTO_MSG_TIME          (2 * 80)
 
-// Total de nodes por player
+// Sound detection heights
+#define SOUND_WALK_HEIGHT 		(20.0)
+#define SOUND_RUN_HEIGHT 		(45.0)
+#define SOUND_GUNSHOT_HEIGHT 	(80.0)
+#define SOUND_WHISTLE_HEIGHT 	(55.0)
+#define SOUND_RADIO_HEIGHT 		(30.0)
+#define SOUND_VEHICLE_HEIGHT 	(75.0)
+
+// Maximum sound heights
+#define MAX_SOUND_WALK_HEIGHT 	(7.0)
+#define MAX_SOUND_RUN_HEIGHT 	(11.0)
+#define MAX_SOUND_GUNSHOT_HEIGHT (14.0)
+#define MAX_SOUND_WHISTLE_HEIGHT (13.0)
+#define MAX_SOUND_RADIO_HEIGHT 	(8.0)
+#define MAX_SOUND_VEHICLE_HEIGHT (14.0)
+
+// Player nodes configuration
 #define MAX_PLAYER_NODES 			(60)
 
-// Tipos de armas
-#define WEAPON_TYPE_PRIMARY    		(1)
-#define WEAPON_TYPE_SECONDARY  		(2)
-#define WEAPON_TYPE_TERTIARY   		(3)
+// Civilian types
+#define CIVILIAN_TYPE_NORMAL    	(1)
+#define CIVILIAN_TYPE_WORKER    	(2)
+#define CIVILIAN_TYPE_SECURITY   	(3)
 
-// Tempo para desaparecer o corpo
+// Body disappear timer
 #define TIMER_BODY                  (5 * 60000)
 
-stock const Float:Zombies_Spawns[][3] =
+// ========================================
+// CIVILIAN SPAWN LOCATIONS
+// ========================================
+stock const Float:Civilian_Spawns[][3] =
 {
     {452.15240, -1671.57471, 26.23418},
     {2519.17920, 2748.62646, 9.75808},
     {2539.03223, 2690.40161, 9.75808}
 };
-new Iterator:ZombieSpawnsIter<sizeof(Zombies_Spawns)>;
+new Iterator:CivilianSpawnsIter<sizeof(Civilian_Spawns)>;
 
-enum zombie_Enum {
-	zombie_id,
-	zombie_attack,
-	zombie_pause,
-	zombie_pause_init,
-	zombie_dead,
-	zombie_grito,
-	zombie_indobarulho,
-	zombie_observando,
-	zombie_walktime,
-	zombie_class,
-	zombie_class_defalt,
-	zombie_lastupdate,
-	zombie_shootdelay,
-	Float:zombie_health,
-	Float:zombie_velocity,
-	Float:zombie_detection,
-	Float:zombie_alcance,
-	Float:zombie_spawnx,
-	Float:zombie_spawny,
-	Float:zombie_spawnz,
-	Float:zombie_lastx,
-	Float:zombie_lasty,
-	Float:zombie_lastz,
-	zombie_movtype,
-	Float:zombie_movspeed,
+// ========================================
+// CIVILIAN DATA STRUCTURES
+// ========================================
+
+enum civilian_Enum {
+	civilian_id,
+	civilian_target_player,
+	civilian_pause,
+	civilian_pause_init,
+	civilian_inactive,
+	civilian_speaking,
+	civilian_investigating_sound,
+	civilian_observing,
+	civilian_walktime,
+	civilian_class,
+	civilian_class_default,
+	civilian_lastupdate,
+	civilian_interaction_delay,
+	Float:civilian_health,
+	Float:civilian_velocity,
+	Float:civilian_detection,
+	Float:civilian_interaction_range,
+	Float:civilian_spawnx,
+	Float:civilian_spawny,
+	Float:civilian_spawnz,
+	Float:civilian_lastx,
+	Float:civilian_lasty,
+	Float:civilian_lastz,
+	civilian_movtype,
+	Float:civilian_movspeed,
 }
-new ZombieInfo[MAX_PLAYERS][zombie_Enum];
+new CivilianInfo[MAX_PLAYERS][civilian_Enum];
 
+// Civilian class types
 enum {
-	zombie_class_normal,
-	zombie_class_shovel,
-	zombie_class_knifer,
-	zombie_class_serra,
-	zombie_class_bomber,
-	zombie_class_bandido,
+	civilian_class_normal,
+	civilian_class_worker,
+	civilian_class_security,
+	civilian_class_shopkeeper,
+	civilian_class_pedestrian,
 }
 
-#define max_classes 75
+#define MAX_CIVILIAN_CLASSES 75
 new index_class = 0;
-new index_bandidos = 0;
+new index_security = 0;
 
-enum zombieClassEnumInfo {
-
-	// Class id
-	zombie_class_id,
-
-	// Skin da class
-	zombie_class_skin,
-
-	// Resistencia do zombie
-	Float:zombie_class_resistence,
-
-	// Visão do zombie
-	Float:zombie_class_detection,
-
-	// Alcance do zombie/bandido
-	Float:zombie_class_rangeattack,
-
-	// Delay tiro
-	zombie_class_shootdelay,
-
-	// Arma do zombie
-	zombie_class_weapon,
-
-	// type movement
-	zombie_class_movtype,
-
-	// Velocidade movimento
-	Float:zombie_class_movspeed,
+enum civilianClassEnumInfo {
+	// Class ID
+	civilian_class_id,
+	
+	// Skin for this class
+	civilian_class_skin,
+	
+	// Health/resistance
+	Float:civilian_class_health,
+	
+	// Detection range
+	Float:civilian_class_detection,
+	
+	// Interaction range
+	Float:civilian_class_interaction_range,
+	
+	// Interaction delay
+	civilian_class_interaction_delay,
+	
+	// Weapon (for security only)
+	civilian_class_weapon,
+	
+	// Movement type
+	civilian_class_movtype,
+	
+	// Movement speed
+	Float:civilian_class_movspeed,
 }
-new ZombieClassInfo[max_classes][zombieClassEnumInfo];
+new CivilianClassInfo[MAX_CIVILIAN_CLASSES][civilianClassEnumInfo];
 
-new tickBarulho;
-new zombiecount;
-
-// Total de nodes por player
-#define MAX_PLAYER_NODES 			(60)
-
-new ZombieNodeIndex[MAX_PLAYERS];
-
+// ========================================
+// GLOBAL VARIABLES
+// ========================================
+new tickSound;
+new civiliancount;
+new CivilianNodeIndex[MAX_PLAYERS];
 new Float:PlayerNodesX[MAX_PLAYERS][MAX_PLAYER_NODES];
 new Float:PlayerNodesY[MAX_PLAYERS][MAX_PLAYER_NODES];
 new Float:PlayerNodesZ[MAX_PLAYERS][MAX_PLAYER_NODES];
 
+// Weapon damage points (kept for security guards)
 static const stock s_WeaponsPoints[] = {
-	6, // 0 - Fist
-	12, // 1 - Brass knuckles
-	15, // 2 - Golf club
-	12, // 3 - Nitestick
-	22, // 4 - Knife
-	19, // 5 - Bat
-	12, // 6 - Shovel
-	11, // 7 - Pool cue
-	19, // 8 - Katana
-	5, // 9 - Chainsaw
-	1, // 10 - Dildo
-	1, // 11 - Taser
-	1, // 12 - Vibrator
-	1, // 13 - Vibrator 2
-	1, // 14 - Flowers
-	9, // 15 - Cane
-	82, // 16 - Grenade
-	9, // 17 - Teargas
-	1, // 18 - Molotov
-	10, // 19 - Vehicle M4 (custom)
-	20, // 20 - Vehicle minigun (custom)
-	1, // 21
-	25, // 22 - Colt 45
-	21, // 23 - Silenced
-	39, // 24 - Deagle
-	29, // 25 - Shotgun
-	19, // 26 - Sawed-off
-	38, // 27 - Spas
-	23, // 28 - UZI
-	20, // 29 - MP5
-	29, // 30 - AK47
-	29, // 31 - M4
-	17, // 32 - Tec9
-	49, // 33 - Cuntgun
-	63, // 34 - Sniper
-	82, // 35 - Rocket launcher
-	82, // 36 - Heatseeker
-	1, // 37 - Flamethrower
-	0, // 38 - Minigun
-	82, // 39 - Satchel
-	6, // 40 - Detonator
-	6, // 41 - Spraycan
-	0, // 42 - Fire extinguisher
-	6, // 43 - Camera
-	6, // 44 - Night vision
-	6, // 45 - Infrared
-	6, // 46 - Parachute
-	6, // 47 - Fake pistol
-	2, // 48 - Pistol whip (custom)
-	10, // 49 - Vehicle
-	330, // 50 - Helicopter blades
-	82, // 51 - Explosion
-	1, // 52 - Car park (custom)
-	1, // 53 - Drowning
-	165  // 54 - Splat
+	6, 12, 15, 12, 22, 19, 12, 11, 19, 5, 1, 1, 1, 1, 1, 9, 82, 9, 1, 10, 20, 1, 25, 21, 39, 29, 19, 38, 23, 20, 29, 29, 17, 49, 63, 82, 82, 1, 0, 82, 6, 6, 0, 6, 6, 6, 6, 6, 2, 10, 330, 82, 1, 1, 165
 };
 
-//IA inteligente
+// ========================================
+// MAIN SYSTEM INITIALIZATION
+// ========================================
+
 public OnGameModeInit()
 {
-	// Zombies Class
-	SetupZombiesClasses();
-
-	// Remover barreiras
+	print("========================================");
+	print("  " SCRIPT_NAME " " NAME_VERSION);
+	print("  Initializing civilian AI system...");
+	print("========================================");
+	
+	// Setup civilian classes
+	SetupCivilianClasses();
+	
+	// Remove barriers for pathfinding
 	CA_RemoveBarriers();
-
-	// Iniciar colandreas
+	
+	// Initialize ColAndreas
 	CA_Init();
-
-	// Zombies
-	print( "[Z Zation] Iniciando zombies..." );
-	z_Init();
-
-// npc updates
+	
+	// Initialize civilians
+	print("[Civilian AI] Starting civilian spawning...");
+	InitializeCivilians();
+	
+	// NPC update settings
 	FCNPC_SetUpdateRate(70);
 	FCNPC_SetTickRate(10);
+	
+	print("[Civilian AI] System initialized successfully!");
 	return 1;
 }
-// Módulos
+
+// ========================================
+// UTILITY FUNCTIONS
+// ========================================
+
 Float:GetPointDistanceToPoint(Float:x1,Float:y1,Float:z1,Float:x2,Float:y2,Float:z2)
 {
 	new Float:x, Float:y, Float:z;
@@ -259,584 +234,536 @@ Float:GetPointDistanceToPoint(Float:x1,Float:y1,Float:z1,Float:x2,Float:y2,Float
   	return floatsqroot(x*x+y*y+z*z);
 }
 
-stock connectZombieToServer(world=0) {
-
-	new z_name[MAX_PLAYER_NAME];
-
-	format(z_name, sizeof (z_name), "zombie_%d_%d", zombiecount++, gettime());
-
-	new zo_id = FCNPC_Create(z_name);
-
-    if (zo_id != INVALID_PLAYER_ID) {
-
-	    // Vida do Zombie
-	    ZombieInfo[zo_id][zombie_health] 	  = 100.0;
-	    ZombieInfo[zo_id][zombie_id]     	  = zo_id;
-	    ZombieInfo[zo_id][zombie_attack]      = INVALID_PLAYER_ID;
-	    ZombieInfo[zo_id][zombie_pause_init]  = GetTickCount() + 10000;
-	    ZombieInfo[zo_id][zombie_indobarulho] = 0;
-	    ZombieInfo[zo_id][zombie_observando]  = 0;
-	    ZombieInfo[zo_id][zombie_lastupdate]  = GetTickCount() + 10000;
-
-	    new random_spawn = Iter_Random(ZombieSpawnsIter);
-
-	    if (random_spawn != -1)
-	    {
-	    	Iter_Remove(ZombieSpawnsIter, random_spawn);
-		}
-		else
-		{
-            random_spawn = random(sizeof(Zombies_Spawns));
-		}
-
-	    ZombieInfo[zo_id][zombie_spawnx]      = Zombies_Spawns[random_spawn][0];
-	    ZombieInfo[zo_id][zombie_spawny]      = Zombies_Spawns[random_spawn][1];
-	    ZombieInfo[zo_id][zombie_spawnz]      = Zombies_Spawns[random_spawn][2];
-
-	    CA_RayCastLine(ZombieInfo[zo_id][zombie_spawnx], ZombieInfo[zo_id][zombie_spawny], ZombieInfo[zo_id][zombie_spawnz], ZombieInfo[zo_id][zombie_spawnx], ZombieInfo[zo_id][zombie_spawny], ZombieInfo[zo_id][zombie_spawnz] - 100.0,
-	    ZombieInfo[zo_id][zombie_spawnx], ZombieInfo[zo_id][zombie_spawny], ZombieInfo[zo_id][zombie_spawnz]);
-
-	    ZombieInfo[zo_id][zombie_spawnz] += 1.0;
-
-		ZombieInfo[zo_id][zombie_velocity]    = FCNPC_MOVE_SPEED_RUN;
-
-	    FCNPC_Spawn(zo_id, 136, ZombieInfo[zo_id][zombie_spawnx], ZombieInfo[zo_id][zombie_spawny], ZombieInfo[zo_id][zombie_spawnz]);
-	    FCNPC_SetVirtualWorld(zo_id, world);
-	    respawnZombie(zo_id);
-	}
-	return zo_id;
+Float:GetPointAngleToPoint(Float:x1, Float:y1, Float:x2, Float:y2) {
+    return 180.0 - atan2(x1 - x2, y1 - y2);
 }
 
-stock z_Init()
+// ========================================
+// CIVILIAN MANAGEMENT FUNCTIONS
+// ========================================
+
+stock ConnectCivilianToServer(world=0) {
+	new c_name[MAX_PLAYER_NAME];
+	format(c_name, sizeof(c_name), "civilian_%d_%d", civiliancount++, gettime());
+	
+	new civilian_id = FCNPC_Create(c_name);
+	
+    if (civilian_id != INVALID_PLAYER_ID) {
+	    // Initialize civilian data
+	    CivilianInfo[civilian_id][civilian_health] 	  		= 100.0;
+	    CivilianInfo[civilian_id][civilian_id]     	  		= civilian_id;
+	    CivilianInfo[civilian_id][civilian_target_player]      = INVALID_PLAYER_ID;
+	    CivilianInfo[civilian_id][civilian_pause_init]  		= GetTickCount() + 10000;
+	    CivilianInfo[civilian_id][civilian_investigating_sound] = 0;
+	    CivilianInfo[civilian_id][civilian_observing]  		= 0;
+	    CivilianInfo[civilian_id][civilian_lastupdate]  		= GetTickCount() + 10000;
+	    
+	    // Select random spawn location
+	    new random_spawn = Iter_Random(CivilianSpawnsIter);
+	    if (random_spawn != -1) {
+	    	Iter_Remove(CivilianSpawnsIter, random_spawn);
+		} else {
+            random_spawn = random(sizeof(Civilian_Spawns));
+		}
+		
+	    CivilianInfo[civilian_id][civilian_spawnx] = Civilian_Spawns[random_spawn][0];
+	    CivilianInfo[civilian_id][civilian_spawny] = Civilian_Spawns[random_spawn][1];
+	    CivilianInfo[civilian_id][civilian_spawnz] = Civilian_Spawns[random_spawn][2];
+	    
+	    // Adjust Z coordinate to ground level
+	    CA_RayCastLine(CivilianInfo[civilian_id][civilian_spawnx], CivilianInfo[civilian_id][civilian_spawny], CivilianInfo[civilian_id][civilian_spawnz], 
+	    			   CivilianInfo[civilian_id][civilian_spawnx], CivilianInfo[civilian_id][civilian_spawny], CivilianInfo[civilian_id][civilian_spawnz] - 100.0,
+	    			   CivilianInfo[civilian_id][civilian_spawnx], CivilianInfo[civilian_id][civilian_spawny], CivilianInfo[civilian_id][civilian_spawnz]);
+	    
+	    CivilianInfo[civilian_id][civilian_spawnz] += 1.0;
+		CivilianInfo[civilian_id][civilian_velocity] = FCNPC_MOVE_SPEED_WALK;
+		
+	    // Spawn civilian with default skin
+	    FCNPC_Spawn(civilian_id, 23, CivilianInfo[civilian_id][civilian_spawnx], CivilianInfo[civilian_id][civilian_spawny], CivilianInfo[civilian_id][civilian_spawnz]);
+	    FCNPC_SetVirtualWorld(civilian_id, world);
+	    RespawnCivilian(civilian_id);
+	}
+	return civilian_id;
+}
+
+stock InitializeCivilians()
 {
-	for(new index; index < sizeof (Zombies_Spawns); index++) {
-	    Iter_Add(ZombieSpawnsIter, index);
+	// Initialize spawn iterator
+	for(new index; index < sizeof(Civilian_Spawns); index++) {
+	    Iter_Add(CivilianSpawnsIter, index);
 	}
-	for(new z; z != MAX_ZOMBIES; z++) {
-	    connectZombieToServer();
-	}
-}
-
-public FCNPC_OnMovementEnd(npcid) {
-
-	if (ZombieInfo[npcid][zombie_dead]) return 0;
-
-	if (ZombieInfo[npcid][zombie_attack] == INVALID_PLAYER_ID) {
-
-		FCNPC_ClearAnimations(npcid);
-
-		FCNPC_ApplyAnimation(npcid, "PAULNMAC","PnM_Loop_B", 4.1, 1, 1, 1, 1, 0);
-
-		if(ZombieInfo[npcid][zombie_indobarulho]) {
-
-			FCNPC_Stop(npcid);
-
-			// Quando chegar ao local do barulho
-	   		ZombieInfo[npcid][zombie_observando] = 1;
-
-	   		ZombieInfo[npcid][zombie_walktime] = gettime() + (5 + random(12));
-		}
-	}
-	return 1;
-}
-stock SetupZombiesClasses() {
-	//                    classid           skin    vida   weap  detection
-	// Zombies Normais
-    AddZombieClass(zombie_class_normal, 	197, 	100.0, 	0,   35.0);
-    AddZombieClass(zombie_class_normal, 	200, 	100.0, 	0,   35.0);
-}
-stock AddZombieClass(classid, skinid, Float:resistence, weaponid, Float:detection, Float:rangeattack = 0.6, shootdelay = 100, movtype = FCNPC_MOVE_TYPE_RUN, Float:movspeed = 0.36444) {
-
-    ZombieClassInfo[index_class][zombie_class_id] = classid;
-    ZombieClassInfo[index_class][zombie_class_resistence] = resistence;
-    ZombieClassInfo[index_class][zombie_class_skin] = skinid;
-    ZombieClassInfo[index_class][zombie_class_weapon] = weaponid;
-    ZombieClassInfo[index_class][zombie_class_detection] = detection;
-    ZombieClassInfo[index_class][zombie_class_rangeattack] = rangeattack;
-    ZombieClassInfo[index_class][zombie_class_shootdelay] = shootdelay;
-    ZombieClassInfo[index_class][zombie_class_movtype] = movtype;
-    ZombieClassInfo[index_class][zombie_class_movspeed] = movspeed;
-
-	index_class ++;
-
-	if (classid == zombie_class_bandido) {
-	    index_bandidos ++;
+	
+	// Create all civilians
+	for(new c; c != MAX_CIVILIANS; c++) {
+	    ConnectCivilianToServer();
 	}
 }
 
-forward respawnZombieWorld(npcid);
-public respawnZombieWorld(npcid) {
+// ========================================
+// CIVILIAN CLASS SYSTEM
+// ========================================
 
+stock SetupCivilianClasses() {
+	print("[Civilian AI] Setting up civilian classes...");
+	
+	// Normal civilians
+    AddCivilianClass(civilian_class_normal, 23, 100.0, 0, 20.0);      // Regular male
+    AddCivilianClass(civilian_class_normal, 93, 100.0, 0, 20.0);      // Regular female
+    AddCivilianClass(civilian_class_normal, 169, 100.0, 0, 20.0);     // Casual male
+    AddCivilianClass(civilian_class_normal, 191, 100.0, 0, 20.0);     // Business man
+    
+    // Workers
+    AddCivilianClass(civilian_class_worker, 27, 100.0, 0, 15.0);      // Construction worker
+    AddCivilianClass(civilian_class_worker, 50, 100.0, 0, 15.0);      // Mechanic
+    
+    // Security (can have weapons)
+    AddCivilianClass(civilian_class_security, 71, 150.0, 24, 25.0, 2.0, 1000); // Security guard with Deagle
+    
+    print("[Civilian AI] Civilian classes configured successfully!");
+}
+
+stock AddCivilianClass(classid, skinid, Float:health, weaponid, Float:detection, Float:interaction_range = 1.5, interaction_delay = 2000, movtype = FCNPC_MOVE_TYPE_WALK, Float:movspeed = 0.25) {
+    CivilianClassInfo[index_class][civilian_class_id] = classid;
+    CivilianClassInfo[index_class][civilian_class_health] = health;
+    CivilianClassInfo[index_class][civilian_class_skin] = skinid;
+    CivilianClassInfo[index_class][civilian_class_weapon] = weaponid;
+    CivilianClassInfo[index_class][civilian_class_detection] = detection;
+    CivilianClassInfo[index_class][civilian_class_interaction_range] = interaction_range;
+    CivilianClassInfo[index_class][civilian_class_interaction_delay] = interaction_delay;
+    CivilianClassInfo[index_class][civilian_class_movtype] = movtype;
+    CivilianClassInfo[index_class][civilian_class_movspeed] = movspeed;
+
+	index_class++;
+
+	if (classid == civilian_class_security) {
+	    index_security++;
+	}
+}
+
+// ========================================
+// CIVILIAN RESPAWN SYSTEM
+// ========================================
+
+forward RespawnCivilianWorld(npcid);
+public RespawnCivilianWorld(npcid) {
 	if (npcid < 0 || npcid >= MAX_PLAYERS) return 0;
-
-	// Respawnar o zombie
 	FCNPC_Respawn(npcid);
 	return 1;
 }
-forward respawnZombie(npcid);
-public respawnZombie(npcid)
+
+forward RespawnCivilian(npcid);
+public RespawnCivilian(npcid)
 {
 	if (npcid < 0 || npcid >= MAX_PLAYERS) return 0;
 
-	printf("spawned: %d", npcid);
+	printf("[Civilian AI] Spawned civilian ID: %d", npcid);
 
-	new randClass   = random(index_class - index_bandidos);
+	// Select random class (excluding security for normal spawns)
+	new randClass = random(index_class - index_security);
 
-	if (ZombieInfo[npcid][zombie_class] == zombie_class_bandido) {
-	    randClass = ZombieInfo[npcid][zombie_class_defalt];
+	if (CivilianInfo[npcid][civilian_class] == civilian_class_security) {
+	    randClass = CivilianInfo[npcid][civilian_class_default];
 	}
 
-	// Respawnar o zombie
-	if (ZombieInfo[npcid][zombie_dead]) {
+	// Reset civilian if inactive
+	if (CivilianInfo[npcid][civilian_inactive]) {
 		FCNPC_SetWeapon(npcid, 0);
 	}
 
-	// Skin e vida do zombie
-	FCNPC_SetSkin(npcid, ZombieClassInfo[randClass][zombie_class_skin]);
-	FCNPC_SetHealth(npcid, ZombieClassInfo[randClass][zombie_class_resistence]);
+	// Set skin and health
+	FCNPC_SetSkin(npcid, CivilianClassInfo[randClass][civilian_class_skin]);
+	FCNPC_SetHealth(npcid, CivilianClassInfo[randClass][civilian_class_health]);
 
-	// Remover armas
-	FCNPC_SetWeapon(npcid, 0);
+	// Remove weapons (except for security)
+	if (CivilianClassInfo[randClass][civilian_class_id] != civilian_class_security) {
+		FCNPC_SetWeapon(npcid, 0);
+	} else {
+		FCNPC_SetWeapon(npcid, CivilianClassInfo[randClass][civilian_class_weapon]);
+	}
 
-	// Posição do zombie
-	FCNPC_SetPosition(npcid, ZombieInfo[npcid][zombie_spawnx], ZombieInfo[npcid][zombie_spawny], ZombieInfo[npcid][zombie_spawnz]);
+	// Set position
+	FCNPC_SetPosition(npcid, CivilianInfo[npcid][civilian_spawnx], CivilianInfo[npcid][civilian_spawny], CivilianInfo[npcid][civilian_spawnz]);
 
-	// Informações do zombie
-  	ZombieInfo[npcid][zombie_health]    = ZombieClassInfo[randClass][zombie_class_resistence];
-  	ZombieInfo[npcid][zombie_detection] = ZombieClassInfo[randClass][zombie_class_detection];
-  	ZombieInfo[npcid][zombie_alcance]   = ZombieClassInfo[randClass][zombie_class_rangeattack];
-  	ZombieInfo[npcid][zombie_shootdelay]= ZombieClassInfo[randClass][zombie_class_shootdelay];
-  	ZombieInfo[npcid][zombie_movtype]   = ZombieClassInfo[randClass][zombie_class_movtype];
-  	ZombieInfo[npcid][zombie_movspeed]  = ZombieClassInfo[randClass][zombie_class_movspeed];
-  	ZombieInfo[npcid][zombie_class]     = ZombieClassInfo[randClass][zombie_class_id];
-  	ZombieInfo[npcid][zombie_class_defalt]= randClass;
-  	ZombieInfo[npcid][zombie_dead]      = 0;
-  	ZombieInfo[npcid][zombie_walktime]  = gettime() + (5 + random(12));
+	// Initialize civilian properties
+  	CivilianInfo[npcid][civilian_health]    			= CivilianClassInfo[randClass][civilian_class_health];
+  	CivilianInfo[npcid][civilian_detection] 			= CivilianClassInfo[randClass][civilian_class_detection];
+  	CivilianInfo[npcid][civilian_interaction_range]   	= CivilianClassInfo[randClass][civilian_class_interaction_range];
+  	CivilianInfo[npcid][civilian_interaction_delay]	= CivilianClassInfo[randClass][civilian_class_interaction_delay];
+  	CivilianInfo[npcid][civilian_movtype]   			= CivilianClassInfo[randClass][civilian_class_movtype];
+  	CivilianInfo[npcid][civilian_movspeed]  			= CivilianClassInfo[randClass][civilian_class_movspeed];
+  	CivilianInfo[npcid][civilian_class]     			= CivilianClassInfo[randClass][civilian_class_id];
+  	CivilianInfo[npcid][civilian_class_default]			= randClass;
+  	CivilianInfo[npcid][civilian_inactive]      		= 0;
+  	CivilianInfo[npcid][civilian_walktime]  			= gettime() + (5 + random(12));
 	return 1;
 }
+
+// ========================================
+// CIVILIAN AI UPDATE SYSTEM
+// ========================================
+
 public FCNPC_OnUpdate(npcid)
 {
-	new
-	    currentTick = GetTickCount();
-	if (ZombieInfo[npcid][zombie_lastupdate] < currentTick)
+	new currentTick = GetTickCount();
+	if (CivilianInfo[npcid][civilian_lastupdate] < currentTick)
 	{
-        ZombieInfo[npcid][zombie_lastupdate] = currentTick + (190 + random(70));
+        CivilianInfo[npcid][civilian_lastupdate] = currentTick + (190 + random(70));
 
-		if ( ZombieInfo[npcid][zombie_dead] )
-	 	    return 1;
+		// Skip if civilian is inactive or dead
+		if (CivilianInfo[npcid][civilian_inactive]) return 1;
+		if (FCNPC_IsDead(npcid)) return 1;
+	 	if (CivilianInfo[npcid][civilian_pause] > currentTick) return 1;
+		if (CivilianInfo[npcid][civilian_pause_init] > currentTick) return 1;
+		if (!FCNPC_IsStreamedInForAnyone(npcid)) return 1;
 
-		if ( FCNPC_IsDead(npcid) )
-		    return 1;
-
-	 	if ( ZombieInfo[npcid][zombie_pause] > currentTick )
-	 	    return 1;
-
-		if ( ZombieInfo[npcid][zombie_pause_init] > currentTick )
-	 	    return 1;
-
-		if (!FCNPC_IsStreamedInForAnyone(npcid))
-		    return 1;
-
-		// update zombie follow player
-		if (ZombieInfo[npcid][zombie_attack] != INVALID_PLAYER_ID) {
-        	UpdateZombieFolowPlayer(npcid, ZombieInfo[npcid][zombie_attack]);
-		// update iddle zombie
+		// Update civilian behavior based on current state
+		if (CivilianInfo[npcid][civilian_target_player] != INVALID_PLAYER_ID) {
+        	UpdateCivilianInteraction(npcid, CivilianInfo[npcid][civilian_target_player]);
 		} else {
-		    UpdateZombieIddleMovements(npcid);
+		    UpdateCivilianIdleMovements(npcid);
 		}
 
-        // sound effect in zombie
-		if(ZombieInfo[npcid][zombie_grito] < GetTickCount() && ZombieInfo[npcid][zombie_class] != zombie_class_bandido) {
-		    // get a position
-	 	    static Float:pos[3];
-	 	    FCNPC_GetPosition(npcid, pos[0], pos[1], pos[2]);
-		    ZombieInfo[npcid][zombie_grito] = GetTickCount() + (8000 + random(9500));
+        // Civilian speaking/greeting sounds
+		if(CivilianInfo[npcid][civilian_speaking] < GetTickCount() && CivilianInfo[npcid][civilian_class] != civilian_class_security) {
+		    static Float:pos[3];
+		    FCNPC_GetPosition(npcid, pos[0], pos[1], pos[2]);
+		    CivilianInfo[npcid][civilian_speaking] = GetTickCount() + (15000 + random(20000));
+		    // Could add greeting sounds here
 		}
 	}
 	return 1;
 }
 
+// Movement end callback
+public FCNPC_OnMovementEnd(npcid) {
+	if (CivilianInfo[npcid][civilian_inactive]) return 0;
+
+	if (CivilianInfo[npcid][civilian_target_player] == INVALID_PLAYER_ID) {
+		FCNPC_ClearAnimations(npcid);
+		FCNPC_ApplyAnimation(npcid, "PED", "IDLE_stance", 4.1, 1, 1, 1, 1, 0);
+
+		if(CivilianInfo[npcid][civilian_investigating_sound]) {
+			FCNPC_Stop(npcid);
+			// When reaching sound location, look around
+	   		CivilianInfo[npcid][civilian_observing] = 1;
+	   		CivilianInfo[npcid][civilian_walktime] = gettime() + (5 + random(12));
+		}
+	}
+	return 1;
+}
+
+// Respawn callback
 public FCNPC_OnRespawn(npcid) {
-    respawnZombie(npcid);
+    RespawnCivilian(npcid);
 	return 1;
 }
-stock Float:GetPointAngleToPoint(Float:x1, Float:y1, Float:x2, Float:y2) {
-    return 180.0 - atan2(x1 - x2, y1 - y2);
-}
-stock UpdateZombieFolowPlayer(zombie, playerid)
-{
-	// get a current zombie clossest player
-	new Float:currentDistanceBetween;
-	new currentClossestPlayer = z_GetClosestPlayer(zombie, currentDistanceBetween);
-	new zombieFollowPlayer = ZombieInfo[zombie][zombie_attack];
 
-	if (currentClossestPlayer != playerid && IsZombieViewPlayer(zombie, currentClossestPlayer))
+// ========================================
+// CIVILIAN BEHAVIOR FUNCTIONS
+// ========================================
+
+stock UpdateCivilianInteraction(civilian, playerid)
+{
+	// Get closest player to civilian
+	new Float:currentDistanceBetween;
+	new currentClosestPlayer = GetClosestPlayerToCivilian(civilian, currentDistanceBetween);
+	new civilianTargetPlayer = CivilianInfo[civilian][civilian_target_player];
+
+	// Switch to closer player if in detection range
+	if (currentClosestPlayer != playerid && IsCivilianViewingPlayer(civilian, currentClosestPlayer))
     {
-	    ZombieInfo[zombie][zombie_attack] = currentClossestPlayer;
-	    zombieFollowPlayer = currentClossestPlayer;
+	    CivilianInfo[civilian][civilian_target_player] = currentClosestPlayer;
+	    civilianTargetPlayer = currentClosestPlayer;
 	}
 
-	if (currentDistanceBetween < ZombieInfo[zombie][zombie_detection])
+	// If player is within detection range
+	if (currentDistanceBetween < CivilianInfo[civilian][civilian_detection])
     {
-	    // count zombies follow player
-        new countPlayerCurrentFollow = CountZombiesFollowPlayer(zombieFollowPlayer);
-		// check if zombies amount if much
-		if (countPlayerCurrentFollow >= MAX_ZOMBIES_FOLLOW_PLAYER && ZombieInfo[zombie][zombie_attack] != zombieFollowPlayer)
+        // Count civilians already interacting with this player (prevent overcrowding)
+        new countCiviliansNearPlayer = CountCiviliansNearPlayer(civilianTargetPlayer);
+		if (countCiviliansNearPlayer >= MAX_CIVILIANS_NEAR_PLAYER && CivilianInfo[civilian][civilian_target_player] != civilianTargetPlayer)
 		    return 0;
 
  	    new Float:pos[6];
- 	    // get a player position
- 	    GetPlayerPos(zombieFollowPlayer, pos[0], pos[1], pos[2]);
+ 	    GetPlayerPos(civilianTargetPlayer, pos[0], pos[1], pos[2]);
+ 	    FCNPC_GetPosition(civilian, pos[3], pos[4], pos[5]);
 
- 	    FCNPC_GetPosition(zombie, pos[3], pos[4], pos[5]);
-
-		// check if distance is better than zombie radius attack
-		if ( currentDistanceBetween < ZombieInfo[zombie][zombie_alcance] ) {
-			// check if is a bandido
-			if (ZombieInfo[zombie][zombie_class] == zombie_class_bandido) {
-
-				if (IsZombieViewPlayer(zombie, currentClossestPlayer)) {
-					// stop zombie
-					if (FCNPC_IsMoving(zombie))
-                    	FCNPC_Stop(zombie);
-
-                    if (!FCNPC_IsAiming(zombie))
-                    	FCNPC_ClearAnimations(zombie);
-					// aim at player
-					if (!FCNPC_IsAiming(zombie))
-						FCNPC_AimAtPlayer(zombie, zombieFollowPlayer, true);
+		// If within interaction range
+		if (currentDistanceBetween < CivilianInfo[civilian][civilian_interaction_range]) {
+			// Security guards might be more alert but still peaceful
+			if (CivilianInfo[civilian][civilian_class] == civilian_class_security) {
+				if (IsCivilianViewingPlayer(civilian, currentClosestPlayer)) {
+					if (FCNPC_IsMoving(civilian))
+                    	FCNPC_Stop(civilian);
+                    	
+                    // Face the player but don't aim weapons
+					SetCivilianAngleToPlayer(civilian, civilianTargetPlayer);
 					return 1;
 				} else {
-				    // move zombie to player
-				    MoveZombieToPlayer(zombie, zombieFollowPlayer);
-
-				    FCNPC_StopAim(zombie);
+				    MoveCivilianToPlayer(civilian, civilianTargetPlayer);
 				}
 			} else {
-			    // check if explosive zombie
-				if (ZombieInfo[zombie][zombie_class] == zombie_class_bomber) {
-					#if defined onZombieDeath
-				    	onZombieDeath(zombie, INVALID_PLAYER_ID, 255);
-					#endif
-				   	FCNPC_Kill(zombie);
-				    return 1;
-				}
+			    // Regular civilian interaction (friendly greeting)
+			    FCNPC_Stop(civilian);
+                if (!FCNPC_IsAttacking(civilian))
+                   	FCNPC_ClearAnimations(civilian);
 
-			    // stop zombie
-			    FCNPC_Stop(zombie);
-
-                if (!FCNPC_IsAttacking(zombie))
-                   	FCNPC_ClearAnimations(zombie);
-
-				// attack melee player
-				FCNPC_AimAtPlayer(zombie, playerid, false, -1, false);
-
-				ZombieInfo[zombie][zombie_pause] = GetTickCount() + ZOMBIE_UPDATE_TIME;
-
-				FCNPC_MeleeAttack(zombie);
-				// set a zombie angle
-				setZombieAngleToPlayer(zombie, zombieFollowPlayer);
+				// Friendly gesture animation
+				FCNPC_ApplyAnimation(civilian, "GANGS", "hndshkfa", 4.1, 0, 1, 1, 0, 1000);
+				SetCivilianAngleToPlayer(civilian, civilianTargetPlayer);
+				
+				CivilianInfo[civilian][civilian_pause] = GetTickCount() + CIVILIAN_UPDATE_TIME;
 			}
 			return 1;
-		// stop aim and attack
- 	    } else {
- 	        FCNPC_StopAttack(zombie);
- 	        FCNPC_StopAim(zombie);
  	    }
 
-		if (!FCNPC_IsAttacking(zombie)) {
-		    // move zombie to player
-        	if (MoveZombieToPlayer(zombie, zombieFollowPlayer))
+		// Move towards player if not attacking
+		if (!FCNPC_IsAttacking(civilian)) {
+		    if (MoveCivilianToPlayer(civilian, civilianTargetPlayer))
         	{
-        	    FCNPC_ApplyAnimation(zombie, "PED","run_old", 4.1, 1, 1, 1, 1, 0);
+        	    FCNPC_ApplyAnimation(civilian, "PED","WALK_player", 4.1, 1, 1, 1, 1, 0);
         	}
         	else
         	{
-        	    if (FCNPC_IsMoving(zombie))
-        	        FCNPC_Stop(zombie);
-				// apply anim
-        	    FCNPC_ApplyAnimation(zombie, "HAIRCUTS","BRB_Buy", 4.1, 1, 1, 1, 1, 0);
+        	    if (FCNPC_IsMoving(civilian))
+        	        FCNPC_Stop(civilian);
+        	    FCNPC_ApplyAnimation(civilian, "PED", "IDLE_stance", 4.1, 1, 1, 1, 1, 0);
         	}
 		}
-	// stop following
 	} else {
-        StopZombieFollow(zombie);
+        // Stop following player
+        StopCivilianInteraction(civilian);
 	}
 	return 1;
 }
-stock UpdateZombieIddleMovements(zombie) {
 
-	// Verificar o tempo da ultima movimentada
-	if (gettime() > ZombieInfo[zombie][zombie_walktime] && !ZombieInfo[zombie][zombie_indobarulho]) {
-	    // Fazer ele se mover
-	    updateZombiesMovements(zombie);
-	    // Setar o tempo do ultimo movimento
-	    ZombieInfo[zombie][zombie_walktime] = gettime() + (10 + random(15));
+stock UpdateCivilianIdleMovements(civilian) {
+	// Check if it's time to move
+	if (gettime() > CivilianInfo[civilian][civilian_walktime] && !CivilianInfo[civilian][civilian_investigating_sound]) {
+	    UpdateCivilianMovements(civilian);
+	    CivilianInfo[civilian][civilian_walktime] = gettime() + (15 + random(25)); // Longer idle time
 	}
 
-	// check if pursuir a invalid player
+	// Check for nearby players to potentially interact with
 	new Float:currentDistanceBetween;
-	new currentClossestPlayer = z_GetClosestPlayer(zombie, currentDistanceBetween);
-	// check if zombie view player
-	if (currentClossestPlayer != INVALID_PLAYER_ID && currentDistanceBetween < ZombieInfo[zombie][zombie_detection] && IsZombieViewPlayer(zombie, currentClossestPlayer)) {
-
-	    ZombieInfo[zombie][zombie_attack] = currentClossestPlayer;
-	    ZombieInfo[zombie][zombie_indobarulho] = 0;
-	    ZombieInfo[zombie][zombie_observando]  = 0;
+	new currentClosestPlayer = GetClosestPlayerToCivilian(civilian, currentDistanceBetween);
+	
+	if (currentClosestPlayer != INVALID_PLAYER_ID && currentDistanceBetween < CivilianInfo[civilian][civilian_detection] && IsCivilianViewingPlayer(civilian, currentClosestPlayer)) {
+	    CivilianInfo[civilian][civilian_target_player] = currentClosestPlayer;
+	    CivilianInfo[civilian][civilian_investigating_sound] = 0;
+	    CivilianInfo[civilian][civilian_observing] = 0;
 	}
 }
-stock z_GetClosestPlayer(npcid, &Float:distance = 0.0) {
 
+// ========================================
+// CIVILIAN UTILITY FUNCTIONS  
+// ========================================
+
+stock GetClosestPlayerToCivilian(npcid, &Float:distance = 0.0) {
 	new player = INVALID_PLAYER_ID;
 	new Float:dist = 99999.00;
 	new Float:x, Float:y, Float:z, Float:pos;
 	FCNPC_GetPosition(npcid, x, y, z);
 
 	foreach(new playerid : Player) {
-
 		if (GetPlayerVirtualWorld(playerid) != 0 || GetPlayerState(playerid) == PLAYER_STATE_SPECTATING)
 		    continue;
 
 		if (IsPlayerInAnyVehicle(playerid))
 		    continue;
 
-	    if ( (pos = GetPlayerDistanceFromPoint(playerid, x, y, z) ) < dist)
+	    if ((pos = GetPlayerDistanceFromPoint(playerid, x, y, z)) < dist)
 		{
 	        player = playerid;
 	        dist = pos;
 	    }
 	}
 	distance = dist;
-
 	return player;
 }
-stock IsZombieViewPlayer(zombie, playerid) {
 
-	static
-	    // player
-		Float:x,
-		Float:y,
-		Float:z,
-		// zombie
-		Float:zox,
-		Float:zoy,
-		Float:zoz;
+stock IsCivilianViewingPlayer(civilian, playerid) {
+	static Float:x, Float:y, Float:z, Float:cx, Float:cy, Float:cz;
 
-	FCNPC_GetPosition(zombie, zox, zoy, zoz);
-
+	FCNPC_GetPosition(civilian, cx, cy, cz);
 	GetPlayerPos(playerid, x, y, z);
 
-	if (!IsZombieFacingPlayer(zombie, x, y, zox, zoy, 80.0) && getPlayerOnfootSpeed(playerid) < 12)
+	// Less strict viewing angle for civilians (they're more aware)
+	if (!IsCivilianFacingPlayer(civilian, x, y, cx, cy, 120.0) && GetPlayerOnfootSpeed(playerid) < 8)
 	    return 0;
 
-	if (CA_RayCastLine(x, y, z, zox, zoy, zoz, x, x, x))
+	// Check for obstacles
+	if (CA_RayCastLine(x, y, z, cx, cy, cz, x, x, x))
 	    return 0;
 
 	return 1;
 }
-stock CountZombiesFollowPlayer(playerid) {
 
+stock CountCiviliansNearPlayer(playerid) {
 	new count;
 
-	for (new z = GetPlayerPoolSize(), zombie; zombie <= z; zombie++) {
-
-		if (!FCNPC_IsValid(zombie))
+	for (new c = GetPlayerPoolSize(), civilian; civilian <= c; civilian++) {
+		if (!FCNPC_IsValid(civilian))
 		    continue;
 
-		if (ZombieInfo[zombie][zombie_attack] == playerid) {
+		if (CivilianInfo[civilian][civilian_target_player] == playerid) {
+			// Adjust civilian speed based on crowd
+			CivilianInfo[civilian][civilian_velocity] = (CivilianInfo[civilian][civilian_movspeed]) - (count * 0.015);
 
-			//ZombieInfo[zombie][zombie_velocity] = (0.51000) - (count * 0.025);
-			ZombieInfo[zombie][zombie_velocity] = (ZombieInfo[zombie][zombie_movspeed]) - (count * 0.025);
+			if (CivilianInfo[civilian][civilian_velocity] < 0.15000)
+			    CivilianInfo[civilian][civilian_velocity] = 0.15000;
 
-			if (ZombieInfo[zombie][zombie_velocity] < 0.20000)
-			    ZombieInfo[zombie][zombie_velocity] = 0.20000;
-
-			count ++;
+			count++;
 	 	}
 	}
 	return count;
 }
-stock MoveZombieToPlayer(zombie, playerid) {
 
-	static sucess, nodeid, Float:x, Float:y, Float:z, Float:px, Float:py, Float:pz;
+stock MoveCivilianToPlayer(civilian, playerid) {
+	static success, nodeid, Float:x, Float:y, Float:z, Float:px, Float:py, Float:pz;
 
     nodeid = -1;
+    success = false;
 
-    sucess = false;
-
-	FCNPC_GetPosition(zombie, x, y, z);
-
+	FCNPC_GetPosition(civilian, x, y, z);
 	GetPlayerPos(playerid, px, py, pz);
 
-    sucess = CA_TraceLine(zombie, playerid, x, y, z, px, py, pz, .maxnodes = 1);
+    success = CA_TraceLine(civilian, playerid, x, y, z, px, py, pz, .maxnodes = 1);
 
-	if (!sucess)
+	if (!success)
 	{
 		for (new node; node != MAX_PLAYER_NODES; node++)
 		{
-		    new result = CA_TraceLine(zombie,playerid,x, y, z,PlayerNodesX[playerid][node],PlayerNodesY[playerid][node],PlayerNodesZ[playerid][node], .nodeid = node, .maxnodes = 1);
+		    new result = CA_TraceLine(civilian, playerid, x, y, z, PlayerNodesX[playerid][node], PlayerNodesY[playerid][node], PlayerNodesZ[playerid][node], .nodeid = node, .maxnodes = 1);
 
-			if(result == -2)
-			    break;
+			if(result == -2) break;
 
 			if (result)
 			{
 				nodeid = node;
-
-				ZombieInfo[zombie][zombie_lastx] = PlayerNodesX[playerid][node];
-				ZombieInfo[zombie][zombie_lasty] = PlayerNodesY[playerid][node];
-				ZombieInfo[zombie][zombie_lastz] = PlayerNodesZ[playerid][node];
-
+				CivilianInfo[civilian][civilian_lastx] = PlayerNodesX[playerid][node];
+				CivilianInfo[civilian][civilian_lasty] = PlayerNodesY[playerid][node];
+				CivilianInfo[civilian][civilian_lastz] = PlayerNodesZ[playerid][node];
 				break;
 		    }
 		}
 	}
 
-	if ( nodeid != -1 || sucess )
+	if (nodeid != -1 || success)
 	{
-	    FCNPC_CreateMovement(zombie);
+	    FCNPC_CreateMovement(civilian);
 
-	    for(new nodes; nodes < ZombieNodeIndex[zombie]; nodes++)
+	    for(new nodes; nodes < CivilianNodeIndex[civilian]; nodes++)
 		{
-	        // Add movimentos
-            FCNPC_AddMovement(zombie, PlayerNodesX[zombie][nodes], PlayerNodesY[zombie][nodes], PlayerNodesZ[zombie][nodes]);
+            FCNPC_AddMovement(civilian, PlayerNodesX[civilian][nodes], PlayerNodesY[civilian][nodes], PlayerNodesZ[civilian][nodes]);
 		}
 
-		// Aplicar o movimento
-		FCNPC_PlayMovement(zombie, ZombieInfo[zombie][zombie_movtype], ZombieInfo[zombie][zombie_velocity]);
-
+		FCNPC_PlayMovement(civilian, CivilianInfo[civilian][civilian_movtype], CivilianInfo[civilian][civilian_velocity]);
 		return 1;
 	}
 	else
 	{
-		FCNPC_Stop(zombie);
+		FCNPC_Stop(civilian);
 	}
 
 	return 0;
 }
-stock setZombieAngleToPlayer(npcid, playerid) {
 
-	static
-	    Float:zx, Float:zy, Float:zz,
-	    Float:px, Float:py, Float:pz,
-		Float:ang,
-		Float:angz
-		;
+stock SetCivilianAngleToPlayer(npcid, playerid) {
+	static Float:cx, Float:cy, Float:cz, Float:px, Float:py, Float:pz, Float:ang, Float:angc;
 
-	FCNPC_GetPosition(npcid, zx, zy, zz);
-
+	FCNPC_GetPosition(npcid, cx, cy, cz);
 	GetPlayerPos(playerid, px, py, pz);
 
-	angz = FCNPC_GetAngle(npcid);
+	angc = FCNPC_GetAngle(npcid);
 
-	zx -= (5.0 * floatsin(-angz, degrees));
-	zy -= (5.0 * floatcos(-angz, degrees));
+	cx -= (5.0 * floatsin(-angc, degrees));
+	cy -= (5.0 * floatcos(-angc, degrees));
 
-	ang = GetPointAngleToPoint(zx, zy, px, py);
+	ang = GetPointAngleToPoint(cx, cy, px, py);
 
-	zx += (10.0 * floatsin(-ang, degrees));
-	zy += (10.0 * floatcos(-ang, degrees));
+	cx += (10.0 * floatsin(-ang, degrees));
+	cy += (10.0 * floatcos(-ang, degrees));
 
-	FCNPC_SetAngleToPos(npcid, zx, zy);
+	FCNPC_SetAngleToPos(npcid, cx, cy);
 }
-stock StopZombieFollow(zombie) {
 
-	if (ZombieInfo[zombie][zombie_attack] != INVALID_PLAYER_ID) {
+stock StopCivilianInteraction(civilian) {
+	if (CivilianInfo[civilian][civilian_target_player] != INVALID_PLAYER_ID) {
+	    CivilianInfo[civilian][civilian_target_player] = INVALID_PLAYER_ID;
 
-	    ZombieInfo[zombie][zombie_attack] = INVALID_PLAYER_ID;
+		FCNPC_Stop(civilian);
+		FCNPC_ClearAnimations(civilian);
+	    FCNPC_StopAttack(civilian);
+	    FCNPC_StopAim(civilian);
 
-		// Parar o zombie
-		FCNPC_Stop(zombie);
-
-		// Limpar as animações
-		ClearAnimations(zombie);
-
- 	    // Fazer parar de bater
-	    FCNPC_StopAttack(zombie);
-
-	    // Parar de mirar
-	    FCNPC_StopAim(zombie);
-
-	    FCNPC_ApplyAnimation(zombie, "PAULNMAC","PnM_Loop_B", 3.1, 1, 1, 1, 1, 0);
-
-	    ZombieInfo[zombie][zombie_walktime] = gettime() + (5 + random(15));
+	    FCNPC_ApplyAnimation(civilian, "PED", "IDLE_stance", 3.1, 1, 1, 1, 1, 0);
+	    CivilianInfo[civilian][civilian_walktime] = gettime() + (8 + random(15));
 	}
 }
-forward updateZombiesMovements(zombie);
-public updateZombiesMovements(zombie)
+
+// ========================================
+// CIVILIAN MOVEMENT SYSTEM
+// ========================================
+
+forward UpdateCivilianMovements(civilian);
+public UpdateCivilianMovements(civilian)
 {
+	new Float:x, Float:y, Float:z, Float:tox, Float:toy, Float:toz;
 
-	new
-		Float:x,
-		Float:y,
-		Float:z,
-		Float:tox,
-		Float:toy,
-		Float:toz
-		;
+	FCNPC_GetPosition(civilian, x, y, z);
 
-	FCNPC_GetPosition(zombie, x, y, z);
-
-	tox = x + frandom(5.0) - frandom(5.0);
-	toy = y + frandom(5.0) - frandom(5.0);
+	// Random movement in area
+	tox = x + frandom(8.0) - frandom(8.0);
+	toy = y + frandom(8.0) - frandom(8.0);
 	toz = z;
 
-	if (CA_TraceLine(zombie, -1, x, y, z, tox, toy, toz, .stepsize = 1.5, .maxnodes = 2)) {
+	if (CA_TraceLine(civilian, -1, x, y, z, tox, toy, toz, .stepsize = 1.5, .maxnodes = 2)) {
+		FCNPC_CreateMovement(civilian);
 
-		FCNPC_CreateMovement(zombie);
-
-	    for(new nodes; nodes < ZombieNodeIndex[zombie]; nodes++) {
-	        FCNPC_AddMovement(zombie, PlayerNodesX[zombie][nodes], PlayerNodesY[zombie][nodes], PlayerNodesZ[zombie][nodes]);
+	    for(new nodes; nodes < CivilianNodeIndex[civilian]; nodes++) {
+	        FCNPC_AddMovement(civilian, PlayerNodesX[civilian][nodes], PlayerNodesY[civilian][nodes], PlayerNodesZ[civilian][nodes]);
 	    }
 
-	    FCNPC_PlayMovement(zombie, FCNPC_MOVE_TYPE_WALK, .speed = 0.1252086, .delaystop = 0);
-
-	    FCNPC_ApplyAnimation(zombie, "PED","WALK_old", 3.1, 1, 1, 1, 1, 0);
+	    FCNPC_PlayMovement(civilian, FCNPC_MOVE_TYPE_WALK, .speed = 0.1252086, .delaystop = 0);
+	    FCNPC_ApplyAnimation(civilian, "PED","WALK_player", 3.1, 1, 1, 1, 1, 0);
 	}
 
 	return 1;
 }
-stock IsZombieFacingPlayer(zombieid, Float:pX, Float:pY, Float:X, Float:Y, Float:dOffset)
+
+stock IsCivilianFacingPlayer(civilianid, Float:pX, Float:pY, Float:X, Float:Y, Float:dOffset)
 {
-	static
-		Float:pA,
-		Float:ang
-		;
+	static Float:pA, Float:ang;
 
-	pA = FCNPC_GetAngle(zombieid);
+	pA = FCNPC_GetAngle(civilianid);
 
-	if( Y > pY )
+	if(Y > pY)
 		ang = (-acos((X - pX) / floatsqroot((X - pX) * (X - pX) + (Y - pY) * (Y - pY))) - 90.0);
-
-	else if( Y < pY && X < pX )
+	else if(Y < pY && X < pX)
 		ang = (acos((X - pX) / floatsqroot((X - pX) * (X - pX) + (Y - pY) * (Y - pY))) - 450.0);
-
-	else if( Y < pY )
+	else if(Y < pY)
 		ang = (acos((X - pX) / floatsqroot((X - pX) * (X - pX) + (Y - pY) * (Y - pY))) - 90.0);
 
 	if(AngleInRangeOfAngleEx(-ang, pA, dOffset))
 		return 1;
 
 	return 0;
-
 }
-stock CA_TraceLine(zombie, playerid, Float:x, Float:y, Float:z, Float:endx, Float:endy, Float:endz, Float:stepsize=1.45, nodeid = 999, maxnodes = 1)
+
+// ========================================
+// PATHFINDING SYSTEM
+// ========================================
+
+stock CA_TraceLine(civilian, playerid, Float:x, Float:y, Float:z, Float:endx, Float:endy, Float:endz, Float:stepsize=1.45, nodeid = 999, maxnodes = 1)
 {
 	if (nodeid == 0) {
-
-		static Float:px;
-		static Float:py;
-		static Float:pz;
+		static Float:px, Float:py, Float:pz;
 		GetPlayerPos(playerid, px, py, pz);
-
-		endx = px;
-		endy = py;
-		endz = pz;
+		endx = px; endy = py; endz = pz;
 	}
 
-	static Float:tx;
-	static Float:ty;
-	static Float:tz;
+	static Float:tx, Float:ty, Float:tz;
 
 	if (CA_RayCastLine(x, y, z, endx, endy, endz, tx, ty, tz))
 		return 0;
@@ -844,22 +771,17 @@ stock CA_TraceLine(zombie, playerid, Float:x, Float:y, Float:z, Float:endx, Floa
     CA_RayCastLine(endx, endy, endz, endx, endy, endz - 50.0, tx, ty, tz);
     tz += 1.0;
 
-	// Resetar o caminho
-    ZombieNodeIndex[zombie] = 0;
+    CivilianNodeIndex[civilian] = 0;
 
-	static Float:lastx;
-	static Float:lasty;
-	static Float:lastz;
+	static Float:lastx, Float:lasty, Float:lastz;
 	new Float:point_distance = GetPointDistanceToPoint(x, y, z, endx, endy, tz);
-	new Float:point_angle    = GetPointAngleToPoint(x, y, endx, endy);
+	new Float:point_angle = GetPointAngleToPoint(x, y, endx, endy);
 
-	lastx = x;
-	lasty = y;
-   	lastz = z;
+	lastx = x; lasty = y; lastz = z;
 
 	if (nodeid != 999)
 	{
-		if (PlayerNodesX[playerid][nodeid] == ZombieInfo[zombie][zombie_lastx] && point_distance < 1.0)
+		if (PlayerNodesX[playerid][nodeid] == CivilianInfo[civilian][civilian_lastx] && point_distance < 1.0)
 		{
         	return -2;
 		}
@@ -876,72 +798,30 @@ stock CA_TraceLine(zombie, playerid, Float:x, Float:y, Float:z, Float:endx, Floa
 		if (!IsPointZValid(z, lastz) || CA_RayCastLine(lastx, lasty, lastz, x, y, z, tz, tz, tz))
 			return 0;
 
-		lastx = x;
-		lasty = y;
-	   	lastz = z;
+		lastx = x; lasty = y; lastz = z;
 
-   		PlayerNodesX[zombie][ZombieNodeIndex[zombie]] = x;
-   		PlayerNodesY[zombie][ZombieNodeIndex[zombie]] = y;
-   		PlayerNodesZ[zombie][ZombieNodeIndex[zombie]] = z;
+   		PlayerNodesX[civilian][CivilianNodeIndex[civilian]] = x;
+   		PlayerNodesY[civilian][CivilianNodeIndex[civilian]] = y;
+   		PlayerNodesZ[civilian][CivilianNodeIndex[civilian]] = z;
 
-   		ZombieNodeIndex[zombie] ++;
+   		CivilianNodeIndex[civilian]++;
 
-		if (ZombieNodeIndex[zombie] >= maxnodes) return 1;
+		if (CivilianNodeIndex[civilian] >= maxnodes) return 1;
 	}
 
 	return 1;
 }
-stock Float:convertDamage(Float:damage, bodypart) {
 
-	new Float:newdamage;
-
-	switch(bodypart) {
-
-	    // Barriga
-	    case 3: {newdamage = damage + 0.0;}
-
-	    // Peito
-	    case 4: {newdamage = damage * 1.40;}
-
-	    // Braços
-	    case 5: {newdamage = damage / 1.10;}
-	    case 6: {newdamage = damage / 1.10;}
-
-	    // Pernas
-	    case 7: {newdamage = damage / 1.85;}
-	    case 8: {newdamage = damage / 1.85;}
-
-	    // Cabeça
-	    case 9: {newdamage = damage * 1.90;}
-	}
-
-	return newdamage;
-}
-stock Float:getWeaponZDamage(weaponid) {
-
-	if (weaponid < 0 || weaponid >= sizeof (s_WeaponsPoints)) {
-	    return 0.0;
-	}
-
-	return float(s_WeaponsPoints[weaponid]);
-}
-
-stock CA_TraceLineEx(zombie, Float:x, Float:y, Float:z, Float:endx, Float:endy, Float:endz, Float:stepsize=1.45, maxnodes = 1)
+stock CA_TraceLineEx(civilian, Float:x, Float:y, Float:z, Float:endx, Float:endy, Float:endz, Float:stepsize=1.45, maxnodes = 1)
 {
 	static Float:a;
+    CivilianNodeIndex[civilian] = 0;
 
-	// Resetar o caminho
-    ZombieNodeIndex[zombie] = 0;
-
-	static Float:lastx;
-	static Float:lasty;
-	static Float:lastz;
+	static Float:lastx, Float:lasty, Float:lastz;
 	new Float:point_distance = GetPointDistanceToPoint(x, y, z, endx, endy, endz);
-	new Float:point_angle    = GetPointAngleToPoint(x, y, endx, endy);
+	new Float:point_angle = GetPointAngleToPoint(x, y, endx, endy);
 
-	lastx = x;
-	lasty = y;
-   	lastz = z;
+	lastx = x; lasty = y; lastz = z;
 
 	for (new Float:point; point < point_distance; point += stepsize)
 	{
@@ -954,160 +834,31 @@ stock CA_TraceLineEx(zombie, Float:x, Float:y, Float:z, Float:endx, Float:endy, 
 		if (!IsPointZValid(z, lastz) || CA_RayCastLine(lastx, lasty, lastz, x, y, z, a, a, a))
 			return 0;
 
-		lastx = x;
-		lasty = y;
-	   	lastz = z;
+		lastx = x; lasty = y; lastz = z;
 
-   		PlayerNodesX[zombie][ZombieNodeIndex[zombie]] = x;
-   		PlayerNodesY[zombie][ZombieNodeIndex[zombie]] = y;
-   		PlayerNodesZ[zombie][ZombieNodeIndex[zombie]] = z;
+   		PlayerNodesX[civilian][CivilianNodeIndex[civilian]] = x;
+   		PlayerNodesY[civilian][CivilianNodeIndex[civilian]] = y;
+   		PlayerNodesZ[civilian][CivilianNodeIndex[civilian]] = z;
 
-   		ZombieNodeIndex[zombie] ++;
+   		CivilianNodeIndex[civilian]++;
 
-		if (ZombieNodeIndex[zombie] >= maxnodes) return 1;
+		if (CivilianNodeIndex[civilian] >= maxnodes) return 1;
 	}
 
 	return 1;
 }
 
-stock getPlayerOnfootSpeed(playerid) {
+// ========================================
+// PLAYER INTERACTION SYSTEM
+// ========================================
 
-	static
-		Float:velx,
-		Float:vely,
-		Float:velz;
-
-	GetPlayerVelocity(playerid, velx, vely, velz);
-
-	return floatround(floatsqroot(velx*velx+vely*vely+velz*velz) * 135.00);
-}
-
-stock AngleInRangeOfAngleEx(Float:a1, Float:a2, Float:range)
-{
-	a1 -= a2;
-	if((a1 < range) && (a1 > -range)) return true;
-
-	return false;
-}
-stock IsPointZValid(Float:z1, Float:z2) {
-
-	if ( (z2 < z1 - 1.3) || (z2 > z1 + 1.3) ) return 0;
-
-	return 1;
-}
-public OnPlayerWeaponShot(playerid, weaponid, hittype, hitid, Float:fX, Float:fY, Float:fZ)
-{
-	if (tickBarulho < GetTickCount()) {
-
-		static Float:x, Float:y, Float:z, Float:w;
-		GetPlayerPos(playerid, x, y, z);
-
-		if(!CA_RayCastLine(x, y, z, x, y, z + 100.0, w, w, w)) {
-		    FazerBarulho(x, y, z);
-		}
-	}
-
-	#if defined z_OnPlayerWeaponShot
-	    return z_OnPlayerWeaponShot(playerid, weaponid, hittype, hitid, fX, fY, fZ);
-	#else
-    	return 1;
-	#endif
-}
-#if defined _ALS_OnPlayerWeaponShot
-	#undef OnPlayerWeaponShot
-#else
-	#define _ALS_OnPlayerWeaponShot
-#endif
-#define OnPlayerWeaponShot z_OnPlayerWeaponShot
-#if defined z_OnPlayerWeaponShot
-	forward z_OnPlayerWeaponShot(playerid, weaponid, hittype, hitid, Float:fX, Float:fY, Float:fZ);
-#endif
-
-public FCNPC_OnTakeDamage(npcid, issuerid, Float:amount, weaponid, bodypart) {
-
-	if (ZombieInfo[npcid][zombie_dead])
-	    return 0;
-
-	// Matar o zombie
-
-	// Retirar a vida do zombie
-	amount = convertDamage(getWeaponZDamage(weaponid), bodypart) * 1.14524;
-
-	// Head Shot de Sniper
-	if ( weaponid == 34 && bodypart == 9) {
- 		amount = 255.0;
-	}
-
-	// Retirar a vida do zombie
-	ZombieInfo[npcid][zombie_health] -= amount;
-
-	if (ZombieInfo[npcid][zombie_attack] == INVALID_PLAYER_ID) {
-	    // stop a zombie
-	    FCNPC_Stop(npcid);
-	   	// set a zombie angle
-		setZombieAngleToPlayer(npcid, issuerid);
-	}
-
-	// Dar os pontos
-	static Float:pos[4];
-	if (fireWeapons(weaponid)) {
-
-		// Pegar a posição do ultimo tiro
-       	GetPlayerLastShotVectors(issuerid, pos[3], pos[3], pos[3], pos[0], pos[1], pos[2]);
-
-	} else {
-
-	    // Pegar a posição do zombie
-	    FCNPC_GetPosition(npcid, pos[0], pos[1], pos[2]);
-
-	}
-
-	if ( ZombieInfo[npcid][zombie_health] <= 0.0) {
-
-		// Pegar a posição do player
-	   	FCNPC_GetPosition(npcid, pos[0], pos[1], pos[2]);
-
-
-		#if defined onZombieDeath
-	    	onZombieDeath(npcid, issuerid, weaponid);
-		#endif
-
-	    ZombieInfo[npcid][zombie_dead] = 1;
-
-	   	FCNPC_Kill(npcid);
-	}
-	return 1;
-}
-public FCNPC_OnDeath(npcid, killerid, reason) {
-
-	if (!ZombieInfo[npcid][zombie_dead]) {
-        onZombieDeath(npcid, killerid, reason);
-	}
-	printf("death: %d", npcid);
-
-	return 1;
-}
-public FCNPC_OnSpawn(npcid) {
-
-	respawnZombie(npcid);
-
-	return 1;
-}
-     public OnPlayerStreamIn(playerid, forplayerid) {
-	if (IsPlayerNPC(playerid) && FCNPC_IsDead(playerid)) {
-	    FCNPC_Kill(playerid);
-	}
-	return 1;
-}
 public OnPlayerUpdate(playerid)
 {
-	// Add o node para zombies
-	addPlayerNode(playerid);
+	AddPlayerNode(playerid);
 	return 1;
 }
 
-    stock addPlayerNode(playerid) {
-
+stock AddPlayerNode(playerid) {
 	static Float:x, Float:y, Float:z;
 	GetPlayerPos(playerid, x, y, z);
 
@@ -1122,99 +873,241 @@ public OnPlayerUpdate(playerid)
 
     return 1;
 }
-forward onZombieDeath(zombieid, killerid, weaponid);
-public onZombieDeath(zombieid, killerid, weaponid) {
 
-	print("zombie death");
-	if (ZombieInfo[zombieid][zombie_attack] != INVALID_PLAYER_ID) {
-	    #if defined OnZombieAttackChange
-			OnZombieAttackChange(zombieid, INVALID_PLAYER_ID, ZombieInfo[zombieid][zombie_attack]);
-		#endif
-		ZombieInfo[zombieid][zombie_attack] = INVALID_PLAYER_ID;
-	}
+// ========================================
+// SOUND SYSTEM (for civilian reactions)
+// ========================================
 
-
-	static
-		Float:x,
-		Float:y,
-		Float:z;
-
-	FCNPC_GetPosition(zombieid, x, y, z);
-
-	if (ZombieInfo[zombieid][zombie_class] != zombie_class_bandido)
-	{
-		SetTimerEx("respawnZombieWorld", ZOMBIE_RESPAWN, false, "i", zombieid);
-	} else {
-	    SetTimerEx("respawnZombieWorld", ZOMBIE_RESPAWN * 3, false, "i", zombieid);
-	}
-
-	ZombieInfo[zombieid][zombie_dead] = 1;
-
-	return 1;
-}
-stock FazerBarulho(Float:x, Float:y, Float:z, Float:distancia=100.0)
+public OnPlayerWeaponShot(playerid, weaponid, hittype, hitid, Float:fX, Float:fY, Float:fZ)
 {
-	if (tickBarulho > GetTickCount())
-	{
-		return 0;
+	if (tickSound < GetTickCount()) {
+		static Float:x, Float:y, Float:z, Float:w;
+		GetPlayerPos(playerid, x, y, z);
+
+		if(!CA_RayCastLine(x, y, z, x, y, z + 100.0, w, w, w)) {
+		    CreateSoundDisturbance(x, y, z);
+		}
 	}
-    tickBarulho = GetTickCount() + 5000;
 
-    new
-        countAttractZombies = 0;
+	#if defined c_OnPlayerWeaponShot
+	    return c_OnPlayerWeaponShot(playerid, weaponid, hittype, hitid, fX, fY, fZ);
+	#else
+    	return 1;
+	#endif
+}
 
-	for (new zz = GetPlayerPoolSize(), zombie; zombie <= zz; zombie++)
+#if defined _ALS_OnPlayerWeaponShot
+	#undef OnPlayerWeaponShot
+#else
+	#define _ALS_OnPlayerWeaponShot
+#endif
+#define OnPlayerWeaponShot c_OnPlayerWeaponShot
+#if defined c_OnPlayerWeaponShot
+	forward c_OnPlayerWeaponShot(playerid, weaponid, hittype, hitid, Float:fX, Float:fY, Float:fZ);
+#endif
+
+stock CreateSoundDisturbance(Float:x, Float:y, Float:z, Float:distance=60.0)
+{
+	if (tickSound > GetTickCount()) return 0;
+    tickSound = GetTickCount() + 3000;
+
+    new countInvestigatingCivilians = 0;
+
+	for (new cc = GetPlayerPoolSize(), civilian; civilian <= cc; civilian++)
 	{
-		if (!FCNPC_IsValid(zombie))
-		    continue;
+		if (!FCNPC_IsValid(civilian)) continue;
+	    if (CivilianInfo[civilian][civilian_inactive]) continue;
+	    if (CivilianInfo[civilian][civilian_target_player] != INVALID_PLAYER_ID) continue;
 
-	    if (ZombieInfo[zombie][zombie_dead])
-			continue;
-
-	    if (ZombieInfo[zombie][zombie_attack] != INVALID_PLAYER_ID)
-	        continue;
-
-	    if (IsPlayerInRangeOfPoint(zombie, distancia, x, y, z))
+	    if (IsPlayerInRangeOfPoint(civilian, distance, x, y, z))
 		{
-		    countAttractZombies++;
-			// Fazer o zombie se mover até o local do barulho
-			static Float:zPos[3];
+		    countInvestigatingCivilians++;
+		    
+			static Float:cPos[3];
+			FCNPC_GetPosition(civilian, cPos[0], cPos[1], cPos[2]);
 
-			FCNPC_GetPosition(zombie, zPos[0], zPos[1], zPos[2]);
+			CA_TraceLineEx(civilian, cPos[0], cPos[1], cPos[2], x, y, z, .stepsize=2.0, .maxnodes = 20);
 
-			CA_TraceLineEx(zombie, zPos[0], zPos[1], zPos[2], x, y, z, .stepsize=2.0, .maxnodes = 30);
-
-			if (ZombieNodeIndex[zombie] > 0)
+			if (CivilianNodeIndex[civilian] > 0)
 			{
-			    FCNPC_CreateMovement(zombie);
+			    FCNPC_CreateMovement(civilian);
 
-			    for(new nodes; nodes < ZombieNodeIndex[zombie]; nodes++)
+			    for(new nodes; nodes < CivilianNodeIndex[civilian]; nodes++)
 				{
-			        // Add movimentos
-		            FCNPC_AddMovement(zombie, PlayerNodesX[zombie][nodes], PlayerNodesY[zombie][nodes], PlayerNodesZ[zombie][nodes]);
+		            FCNPC_AddMovement(civilian, PlayerNodesX[civilian][nodes], PlayerNodesY[civilian][nodes], PlayerNodesZ[civilian][nodes]);
 				}
 
-				// Aplicar o movimento
-			    FCNPC_PlayMovement(zombie, FCNPC_MOVE_TYPE_WALK, .speed = 0.1252086, .delaystop = 0);
-
-			    FCNPC_ApplyAnimation(zombie, "PED","WALK_old", 4.1, 1, 1, 1, 1, 0);
+			    FCNPC_PlayMovement(civilian, FCNPC_MOVE_TYPE_WALK, .speed = 0.15, .delaystop = 0);
+			    FCNPC_ApplyAnimation(civilian, "PED","WALK_player", 4.1, 1, 1, 1, 1, 0);
 			}
 
-			ZombieInfo[zombie][zombie_indobarulho] = 1;
-			ZombieInfo[zombie][zombie_observando]  = 0;
+			CivilianInfo[civilian][civilian_investigating_sound] = 1;
+			CivilianInfo[civilian][civilian_observing] = 0;
 		}
-		if (countAttractZombies > 4)
-		{
-		    return 1;
-		}
+		
+		// Limit investigating civilians to prevent performance issues
+		if (countInvestigatingCivilians > 6) return 1;
 	}
 	return 1;
 }
-stock fireWeapons(weaponid) {
 
+// ========================================
+// CIVILIAN DAMAGE SYSTEM (minimal, for security guards only)
+// ========================================
+
+public FCNPC_OnTakeDamage(npcid, issuerid, Float:amount, weaponid, bodypart) {
+	if (CivilianInfo[npcid][civilian_inactive]) return 0;
+
+	// Only security guards can take combat damage, others just flee
+	if (CivilianInfo[npcid][civilian_class] != civilian_class_security) {
+		// Regular civilians flee when shot at
+		if (issuerid != INVALID_PLAYER_ID) {
+			CivilianInfo[npcid][civilian_target_player] = INVALID_PLAYER_ID;
+			FCNPC_Stop(npcid);
+			FCNPC_ApplyAnimation(npcid, "PED", "run_player", 4.1, 1, 1, 1, 1, 0);
+			
+			// Run away from shooter
+			static Float:px, Float:py, Float:pz, Float:cx, Float:cy, Float:cz;
+			GetPlayerPos(issuerid, px, py, pz);
+			FCNPC_GetPosition(npcid, cx, cy, cz);
+			
+			new Float:angle = GetPointAngleToPoint(px, py, cx, cy);
+			new Float:flee_x = cx + (15.0 * floatsin(-angle, degrees));
+			new Float:flee_y = cy + (15.0 * floatcos(-angle, degrees));
+			
+			FCNPC_GoTo(npcid, flee_x, flee_y, cz, FCNPC_MOVE_TYPE_RUN, 0.36);
+		}
+		return 0;
+	}
+
+	// Security guard damage handling
+	amount = ConvertDamage(GetWeaponDamage(weaponid), bodypart) * 1.14524;
+
+	if (weaponid == 34 && bodypart == 9) { // Sniper headshot
+ 		amount = 255.0;
+	}
+
+	CivilianInfo[npcid][civilian_health] -= amount;
+
+	if (CivilianInfo[npcid][civilian_target_player] == INVALID_PLAYER_ID) {
+	    FCNPC_Stop(npcid);
+		SetCivilianAngleToPlayer(npcid, issuerid);
+	}
+
+	if (CivilianInfo[npcid][civilian_health] <= 0.0) {
+		static Float:pos[3];
+	   	FCNPC_GetPosition(npcid, pos[0], pos[1], pos[2]);
+
+		#if defined OnCivilianDeath
+	    	OnCivilianDeath(npcid, issuerid, weaponid);
+		#endif
+
+	    CivilianInfo[npcid][civilian_inactive] = 1;
+	   	FCNPC_Kill(npcid);
+	}
+	return 1;
+}
+
+public FCNPC_OnDeath(npcid, killerid, reason) {
+	if (!CivilianInfo[npcid][civilian_inactive]) {
+        OnCivilianDeath(npcid, killerid, reason);
+	}
+	printf("[Civilian AI] Civilian death: %d", npcid);
+	return 1;
+}
+
+public FCNPC_OnSpawn(npcid) {
+	RespawnCivilian(npcid);
+	return 1;
+}
+
+public OnPlayerStreamIn(playerid, forplayerid) {
+	if (IsPlayerNPC(playerid) && FCNPC_IsDead(playerid)) {
+	    FCNPC_Kill(playerid);
+	}
+	return 1;
+}
+
+// ========================================
+// CIVILIAN DEATH HANDLING
+// ========================================
+
+forward OnCivilianDeath(civilianid, killerid, weaponid);
+public OnCivilianDeath(civilianid, killerid, weaponid) {
+	print("[Civilian AI] Civilian death event");
+	
+	if (CivilianInfo[civilianid][civilian_target_player] != INVALID_PLAYER_ID) {
+		CivilianInfo[civilianid][civilian_target_player] = INVALID_PLAYER_ID;
+	}
+
+	static Float:x, Float:y, Float:z;
+	FCNPC_GetPosition(civilianid, x, y, z);
+
+	// Different respawn times based on class
+	if (CivilianInfo[civilianid][civilian_class] != civilian_class_security)
+	{
+		SetTimerEx("RespawnCivilianWorld", CIVILIAN_RESPAWN, false, "i", civilianid);
+	} else {
+	    SetTimerEx("RespawnCivilianWorld", CIVILIAN_RESPAWN * 2, false, "i", civilianid);
+	}
+
+	CivilianInfo[civilianid][civilian_inactive] = 1;
+	return 1;
+}
+
+// ========================================
+// UTILITY FUNCTIONS
+// ========================================
+
+stock Float:ConvertDamage(Float:damage, bodypart) {
+	new Float:newdamage;
+
+	switch(bodypart) {
+	    case 3: {newdamage = damage + 0.0;}         // Torso
+	    case 4: {newdamage = damage * 1.40;}        // Chest
+	    case 5: {newdamage = damage / 1.10;}        // Left arm
+	    case 6: {newdamage = damage / 1.10;}        // Right arm
+	    case 7: {newdamage = damage / 1.85;}        // Left leg
+	    case 8: {newdamage = damage / 1.85;}        // Right leg
+	    case 9: {newdamage = damage * 1.90;}        // Head
+	}
+
+	return newdamage;
+}
+
+stock Float:GetWeaponDamage(weaponid) {
+	if (weaponid < 0 || weaponid >= sizeof(s_WeaponsPoints)) {
+	    return 0.0;
+	}
+	return float(s_WeaponsPoints[weaponid]);
+}
+
+stock GetPlayerOnfootSpeed(playerid) {
+	static Float:velx, Float:vely, Float:velz;
+	GetPlayerVelocity(playerid, velx, vely, velz);
+	return floatround(floatsqroot(velx*velx+vely*vely+velz*velz) * 135.00);
+}
+
+stock AngleInRangeOfAngleEx(Float:a1, Float:a2, Float:range)
+{
+	a1 -= a2;
+	if((a1 < range) && (a1 > -range)) return true;
+	return false;
+}
+
+stock IsPointZValid(Float:z1, Float:z2) {
+	if ((z2 < z1 - 1.3) || (z2 > z1 + 1.3)) return 0;
+	return 1;
+}
+
+stock IsFireWeapon(weaponid) {
 	switch(weaponid) {
 	    case 22..34, 38: return 1;
 	}
 	return 0;
 }
+
+// ========================================
+// END OF CIVILIAN AI SYSTEM
+// ========================================
 
