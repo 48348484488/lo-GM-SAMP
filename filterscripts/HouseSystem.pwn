@@ -23,6 +23,10 @@
 #define MAX_RENTERS_DEFAULT   (2)
 #define ALLOW_MULTIPLE_HOUSES (false)
 
+#define INVITE_DURATION_MS    (120000) // 2 minutes
+#define MAINTENANCE_TAX_PER_PAYDAY (100)
+#define MAX_MISSED_TAXES      (3)
+
 // House virtual worlds will be (houseId + 1) to avoid world 0
 
 enum HouseData {
@@ -46,7 +50,13 @@ enum HouseData {
     maxRenters,
     keysCsv[MAX_CSV_LEN],
     rentersCsv[MAX_CSV_LEN],
-    bool:ownerSpawnAtHouse
+    bool:ownerSpawnAtHouse,
+    // New RP features
+    interiorId,
+    safeBalance,
+    inviteesCsv[MAX_CSV_LEN],
+    inviteExpiresAt,
+    missedTaxCount
 };
 
 new House[MAX_HOUSES][HouseData];
@@ -108,7 +118,7 @@ public OnPlayerSpawn(playerid)
         if (House[i][ownerSpawnAtHouse] && IsHouseOwner(playerid, i))
         {
             SetPlayerVirtualWorld(playerid, House[i][houseWorld]);
-            SetPlayerInterior(playerid, DEFAULT_INTERIOR_ID);
+            SetPlayerInterior(playerid, House[i][interiorId]);
             SetPlayerPos(playerid, House[i][exitX], House[i][exitY], House[i][exitZ]);
             break;
         }
@@ -121,53 +131,86 @@ public HousePayday()
     for (new i = 0; i < MAX_HOUSES; i++)
     {
         if (!House[i][houseExists]) continue;
-        if (House[i][rentPrice] <= 0) continue;
-        if (!House[i][rentersCsv][0]) continue;
 
-        // Iterate renters
-        new tmp[MAX_CSV_LEN];
-        strmid(tmp, House[i][rentersCsv], 0, MAX_CSV_LEN);
-
-        new token[MAX_NAME_LEN];
-        new start = 0, len = strlen(tmp);
-        new ownerId = GetPlayerIdByNameExact(House[i][ownerName]);
-
-        for (new idx = 0, j = 0; j <= len; j++)
+        // Rent collection: goes to house safe
+        if (House[i][rentPrice] > 0 && House[i][rentersCsv][0])
         {
-            if (tmp[j] == ',' || tmp[j] == '\0')
-            {
-                if (j - start > 0)
-                {
-                    strmid(token, tmp, start, j);
-                    new tl = j - start; if (tl > (MAX_NAME_LEN - 1)) tl = (MAX_NAME_LEN - 1); if (tl < 0) tl = 0;
-                    token[tl] = '\0';
+            new tmp[MAX_CSV_LEN]; strmid(tmp, House[i][rentersCsv], 0, MAX_CSV_LEN);
+            new token[MAX_NAME_LEN];
+            new start = 0, len = strlen(tmp);
 
-                    new renterId = GetPlayerIdByNameExact(token);
-                    if (renterId != INVALID_PLAYER_ID)
+            for (new j = 0; j <= len; j++)
+            {
+                if (tmp[j] == ',' || tmp[j] == '\0')
+                {
+                    if (j - start > 0)
                     {
-                        if (GetPlayerMoney(renterId) >= House[i][rentPrice])
+                        strmid(token, tmp, start, j);
+                        new tl = j - start; if (tl > (MAX_NAME_LEN - 1)) tl = (MAX_NAME_LEN - 1); if (tl < 0) tl = 0;
+                        token[tl] = '\0';
+
+                        new renterId = GetPlayerIdByNameExact(token);
+                        if (renterId != INVALID_PLAYER_ID)
                         {
-                            GivePlayerMoney(renterId, -House[i][rentPrice]);
-                            if (ownerId != INVALID_PLAYER_ID)
+                            if (GetPlayerMoney(renterId) >= House[i][rentPrice])
                             {
-                                GivePlayerMoney(ownerId, House[i][rentPrice]);
+                                GivePlayerMoney(renterId, -House[i][rentPrice]);
+                                House[i][safeBalance] += House[i][rentPrice];
+                                new msg[96];
+                                format(msg, sizeof msg, "[Aluguel] Voce pagou $%d na casa %d.", House[i][rentPrice], i);
+                                SendClientMessage(renterId, 0x33CCFFFF, msg);
                             }
-                            new msg[96];
-                            format(msg, sizeof msg, "[Aluguel] Voce pagou $%d na casa %d.", House[i][rentPrice], i);
-                            SendClientMessage(renterId, 0x33CCFFFF, msg);
-                        }
-                        else
-                        {
-                            // Evict
-                            CsvRemoveName(House[i][rentersCsv], MAX_CSV_LEN, token);
-                            UpdateHouseVisuals(i);
-                            SaveAllHouses();
-                            SendClientMessage(renterId, 0xFF0000FF, "[Aluguel] Voce foi despejado por falta de pagamento.");
+                            else
+                            {
+                                // Evict
+                                CsvRemoveName(House[i][rentersCsv], MAX_CSV_LEN, token);
+                                UpdateHouseVisuals(i);
+                                SaveAllHouses();
+                                SendClientMessage(renterId, 0xFF0000FF, "[Aluguel] Voce foi despejado por falta de pagamento.");
+                            }
                         }
                     }
+                    start = j + 1;
                 }
-                start = j + 1;
-                idx++;
+            }
+        }
+
+        // Maintenance tax for owner
+        if (House[i][ownerName][0])
+        {
+            new tax = MAINTENANCE_TAX_PER_PAYDAY;
+            if (House[i][safeBalance] >= tax)
+            {
+                House[i][safeBalance] -= tax;
+                House[i][missedTaxCount] = 0;
+            }
+            else
+            {
+                new ownerId = GetPlayerIdByNameExact(House[i][ownerName]);
+                if (ownerId != INVALID_PLAYER_ID && GetPlayerMoney(ownerId) >= tax)
+                {
+                    GivePlayerMoney(ownerId, -tax);
+                    House[i][missedTaxCount] = 0;
+                }
+                else
+                {
+                    House[i][missedTaxCount]++;
+                    if (House[i][missedTaxCount] >= MAX_MISSED_TAXES)
+                    {
+                        // Foreclose
+                        House[i][ownerName][0] = '\0';
+                        House[i][isLocked] = false;
+                        House[i][keysCsv][0] = '\0';
+                        House[i][rentersCsv][0] = '\0';
+                        House[i][rentPrice] = 0;
+                        House[i][safeBalance] = 0;
+                        House[i][missedTaxCount] = 0;
+                        UpdateHouseVisuals(i);
+                        SaveAllHouses();
+                        if (ownerId != INVALID_PLAYER_ID)
+                            SendClientMessage(ownerId, 0xFF0000FF, "[Casa] Sua propriedade foi penhorada por inadimplencia.");
+                    }
+                }
             }
         }
     }
@@ -180,6 +223,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
         SendClientMessage(playerid, 0x33CCFFFF, "HouseSystem: /hcreate [preco], /hremove, /hbuy, /hsell, /hlock, /henter, /hexit, /hinfo");
         SendClientMessage(playerid, 0x33CCFFFF, "RP: /hname [nome], /hkey add/del [nick], /hkeys, /hrentprice [valor], /hmaxrenters [n], /rentroom, /unrent, /hbell, /hsetentrance, /hsetexit, /hsetspawn");
+        SendClientMessage(playerid, 0x33CCFFFF, "Mais RP: /hsafe [deposit|withdraw|balance] [valor], /hinvite [nick], /hevict [nick], /hevictall, /htransfer [nick], /hintlist, /hinterior [id]");
         return 1;
     }
 
@@ -216,6 +260,11 @@ public OnPlayerCommandText(playerid, cmdtext[])
         House[id][keysCsv][0] = '\0';
         House[id][rentersCsv][0] = '\0';
         House[id][ownerSpawnAtHouse] = false;
+        House[id][interiorId] = DEFAULT_INTERIOR_ID;
+        House[id][safeBalance] = 0;
+        House[id][inviteesCsv][0] = '\0';
+        House[id][inviteExpiresAt] = 0;
+        House[id][missedTaxCount] = 0;
 
         UpdateHouseVisuals(id);
         SaveAllHouses();
@@ -272,6 +321,8 @@ public OnPlayerCommandText(playerid, cmdtext[])
         House[id][keysCsv][0] = '\0';
         House[id][rentersCsv][0] = '\0';
         House[id][rentPrice] = 0;
+        House[id][safeBalance] = 0;
+        House[id][missedTaxCount] = 0;
         UpdateHouseVisuals(id);
         SaveAllHouses();
 
@@ -302,7 +353,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
         if (!CanPlayerEnterHouse(playerid, id)) return SendClientMessage(playerid, 0xFF0000FF, "A porta esta trancada."), 1;
 
         SetPlayerVirtualWorld(playerid, House[id][houseWorld]);
-        SetPlayerInterior(playerid, DEFAULT_INTERIOR_ID);
+        SetPlayerInterior(playerid, House[id][interiorId]);
         SetPlayerPos(playerid, House[id][exitX], House[id][exitY], House[id][exitZ]);
         GameTextForPlayer(playerid, "~w~Bem-vindo", 3000, 4);
         return 1;
@@ -333,8 +384,8 @@ public OnPlayerCommandText(playerid, cmdtext[])
         if (id == -1) return SendClientMessage(playerid, 0xFF0000FF, "Nenhuma casa proxima."), 1;
         if (!House[id][houseExists]) return SendClientMessage(playerid, 0xFF0000FF, "Casa invalida."), 1;
 
-        new msg[180];
-        format(msg, sizeof msg, "%s (ID %d) | Preco: $%d | Dono: %s | Trancada: %s | Aluguel: $%d | Vagas: %d/%d",
+        new msg[220];
+        format(msg, sizeof msg, "%s (ID %d) | Preco: $%d | Dono: %s | Trancada: %s | Aluguel: $%d | Vagas: %d/%d | Cofre: $%d",
             (House[id][houseName][0] ? House[id][houseName] : ("Casa")),
             id,
             House[id][housePrice],
@@ -342,7 +393,8 @@ public OnPlayerCommandText(playerid, cmdtext[])
             (House[id][isLocked] ? ("Sim") : ("Nao")),
             House[id][rentPrice],
             CsvCount(House[id][rentersCsv]),
-            House[id][maxRenters]
+            House[id][maxRenters],
+            House[id][safeBalance]
         );
         SendClientMessage(playerid, 0x33CCFFFF, msg);
         return 1;
@@ -541,6 +593,139 @@ public OnPlayerCommandText(playerid, cmdtext[])
         return 1;
     }
 
+    // ===== New RP Commands =====
+    if (!strncmp(cmdtext, "/hsafe", 6, true))
+    {
+        new sub[16], tmp[16];
+        ParseToken(cmdtext, ' ', 1, sub, sizeof sub);
+        ParseToken(cmdtext, ' ', 2, tmp, sizeof tmp);
+        new amount = strval(tmp);
+
+        new id = GetNearestHouse(playerid);
+        if (id == -1) return SendClientMessage(playerid, 0xFF0000FF, "Nenhuma casa proxima."), 1;
+        if (!IsHouseOwner(playerid, id)) return SendClientMessage(playerid, 0xFF0000FF, "Apenas o dono tem acesso ao cofre."), 1;
+
+        if (!sub[0] || !strcmp(sub, "balance", true))
+        {
+            new msg[96]; format(msg, sizeof msg, "Cofre: $%d", House[id][safeBalance]);
+            SendClientMessage(playerid, 0x33CCFFFF, msg);
+            return 1;
+        }
+        if (!strcmp(sub, "deposit", true))
+        {
+            if (amount <= 0) return SendClientMessage(playerid, 0xFF0000FF, "Uso: /hsafe deposit [valor]"), 1;
+            if (GetPlayerMoney(playerid) < amount) return SendClientMessage(playerid, 0xFF0000FF, "Dinheiro insuficiente."), 1;
+            GivePlayerMoney(playerid, -amount);
+            House[id][safeBalance] += amount;
+            SaveAllHouses();
+            SendClientMessage(playerid, 0x33CC33FF, "Deposito efetuado.");
+            return 1;
+        }
+        if (!strcmp(sub, "withdraw", true))
+        {
+            if (amount <= 0) return SendClientMessage(playerid, 0xFF0000FF, "Uso: /hsafe withdraw [valor]"), 1;
+            if (House[id][safeBalance] < amount) return SendClientMessage(playerid, 0xFF0000FF, "Cofre insuficiente."), 1;
+            House[id][safeBalance] -= amount;
+            GivePlayerMoney(playerid, amount);
+            SaveAllHouses();
+            SendClientMessage(playerid, 0x33CC33FF, "Saque efetuado.");
+            return 1;
+        }
+        return SendClientMessage(playerid, 0xFF0000FF, "Uso: /hsafe [deposit|withdraw|balance] [valor]"), 1;
+    }
+
+    if (!strncmp(cmdtext, "/hinvite", 8, true))
+    {
+        new target[MAX_NAME_LEN];
+        if (!ParseToken(cmdtext, ' ', 1, target, sizeof target)) return SendClientMessage(playerid, 0xFF0000FF, "Uso: /hinvite [nick]"), 1;
+
+        new id = GetNearestHouse(playerid);
+        if (id == -1) return SendClientMessage(playerid, 0xFF0000FF, "Nenhuma casa proxima."), 1;
+        if (!IsHouseOwner(playerid, id) && !IsHouseKeyHolder(playerid, id)) return SendClientMessage(playerid, 0xFF0000FF, "Apenas dono/chaveiro pode convidar."), 1;
+
+        if (!CsvAddName(House[id][inviteesCsv], MAX_CSV_LEN, target)) return SendClientMessage(playerid, 0xFF0000FF, "Lista de convites cheia ou ja convidado."), 1;
+        House[id][inviteExpiresAt] = GetTickCount() + INVITE_DURATION_MS;
+
+        new tId = GetPlayerIdByNameExact(target);
+        if (tId != INVALID_PLAYER_ID)
+        {
+            new host[MAX_NAME_LEN]; GetPlayerName(playerid, host, sizeof host);
+            new msg[144];
+            format(msg, sizeof msg, "%s convidou voce para entrar na casa %d. (2 min)", host, id);
+            SendClientMessage(tId, 0x33CCFFFF, msg);
+        }
+        SendClientMessage(playerid, 0x33CC33FF, "Convite enviado.");
+        return 1;
+    }
+
+    if (!strncmp(cmdtext, "/hevict", 7, true))
+    {
+        new subName[MAX_NAME_LEN];
+        if (!ParseToken(cmdtext, ' ', 1, subName, sizeof subName)) return SendClientMessage(playerid, 0xFF0000FF, "Uso: /hevict [nick]"), 1;
+        new id = GetNearestHouse(playerid);
+        if (id == -1) return SendClientMessage(playerid, 0xFF0000FF, "Nenhuma casa proxima."), 1;
+        if (!IsHouseOwner(playerid, id)) return SendClientMessage(playerid, 0xFF0000FF, "Apenas o dono pode despejar."), 1;
+        if (!CsvContainsName(House[id][rentersCsv], subName)) return SendClientMessage(playerid, 0xFF0000FF, "Jogador nao e inquilino."), 1;
+        CsvRemoveName(House[id][rentersCsv], MAX_CSV_LEN, subName);
+        UpdateHouseVisuals(id);
+        SaveAllHouses();
+        SendClientMessage(playerid, 0x33CC33FF, "Inquilino despejado.");
+        return 1;
+    }
+
+    if (strcmp(cmdtext, "/hevictall", true) == 0)
+    {
+        new id = GetNearestHouse(playerid);
+        if (id == -1) return SendClientMessage(playerid, 0xFF0000FF, "Nenhuma casa proxima."), 1;
+        if (!IsHouseOwner(playerid, id)) return SendClientMessage(playerid, 0xFF0000FF, "Apenas o dono pode despejar."), 1;
+        House[id][rentersCsv][0] = '\0';
+        UpdateHouseVisuals(id);
+        SaveAllHouses();
+        SendClientMessage(playerid, 0x33CC33FF, "Todos os inquilinos foram despejados.");
+        return 1;
+    }
+
+    if (!strncmp(cmdtext, "/htransfer", 10, true))
+    {
+        new target[MAX_NAME_LEN];
+        if (!ParseToken(cmdtext, ' ', 1, target, sizeof target)) return SendClientMessage(playerid, 0xFF0000FF, "Uso: /htransfer [nick]"), 1;
+        new id = GetNearestHouse(playerid);
+        if (id == -1) return SendClientMessage(playerid, 0xFF0000FF, "Nenhuma casa proxima."), 1;
+        if (!IsHouseOwner(playerid, id)) return SendClientMessage(playerid, 0xFF0000FF, "Apenas o dono pode transferir."), 1;
+        strmid(House[id][ownerName], target, 0, strlen(target));
+        House[id][ownerName][strlen(target)] = '\0';
+        House[id][keysCsv][0] = '\0';
+        House[id][rentersCsv][0] = '\0';
+        House[id][inviteesCsv][0] = '\0';
+        House[id][inviteExpiresAt] = 0;
+        House[id][isLocked] = true; // default lock after transfer
+        UpdateHouseVisuals(id);
+        SaveAllHouses();
+        SendClientMessage(playerid, 0x33CC33FF, "Propriedade transferida.");
+        return 1;
+    }
+
+    if (strcmp(cmdtext, "/hintlist", true) == 0)
+    {
+        SendClientMessage(playerid, 0x33CCFFFF, "Interiores comuns: 1..15 (varia por gamemode). Use /hinterior [id] e /hsetexit para ajustar posicao interna.");
+        return 1;
+    }
+
+    if (!strncmp(cmdtext, "/hinterior", 10, true))
+    {
+        new tmp[8];
+        if (!ParseToken(cmdtext, ' ', 1, tmp, sizeof tmp)) return SendClientMessage(playerid, 0xFF0000FF, "Uso: /hinterior [id]"), 1;
+        new iid = strval(tmp);
+        if (iid < 0 || iid > 255) return SendClientMessage(playerid, 0xFF0000FF, "Interior invalido."), 1;
+        new id = GetNearestHouse(playerid);
+        if (id == -1) return SendClientMessage(playerid, 0xFF0000FF, "Nenhuma casa proxima."), 1;
+        if (!IsHouseOwner(playerid, id) && !IsPlayerAdminAllowed(playerid)) return SendClientMessage(playerid, 0xFF0000FF, "Sem permissao."), 1;
+        House[id][interiorId] = iid;
+        SaveAllHouses();
+        SendClientMessage(playerid, 0x33CC33FF, "Interior atualizado. Use /hsetexit dentro do interior." );
+        return 1;
+    }
+
     return 0;
 }
 
@@ -664,6 +849,14 @@ public CanPlayerEnterHouse(playerid, houseId)
     if (IsHouseOwner(playerid, houseId)) return 1;
     if (IsHouseKeyHolder(playerid, houseId)) return 1;
     if (IsHouseRenter(playerid, houseId)) return 1;
+
+    // Invite check
+    if (House[houseId][inviteExpiresAt] > 0 && GetTickCount() <= House[houseId][inviteExpiresAt])
+    {
+        new name[MAX_NAME_LEN]; GetPlayerName(playerid, name, sizeof name);
+        if (CsvContainsName(House[houseId][inviteesCsv], name)) return 1;
+    }
+
     return 0;
 }
 
@@ -690,12 +883,12 @@ public SaveAllHouses()
         return 0;
     }
 
-    new line[512];
+    new line[640];
     new saved = 0;
     for (new i = 0; i < MAX_HOUSES; i++)
     {
         if (!House[i][houseExists]) continue;
-        format(line, sizeof line, "%d|%d|%f|%f|%f|%f|%f|%f|%d|%d|%s|%d|%s|%d|%d|%s|%s|%d\n",
+        format(line, sizeof line, "%d|%d|%f|%f|%f|%f|%f|%f|%d|%d|%s|%d|%s|%d|%d|%s|%s|%d|%d|%d|%s|%d|%d\n",
             i,
             House[i][housePrice],
             House[i][entranceX], House[i][entranceY], House[i][entranceZ],
@@ -709,7 +902,12 @@ public SaveAllHouses()
             House[i][maxRenters],
             (House[i][keysCsv][0] ? House[i][keysCsv] : ("")),
             (House[i][rentersCsv][0] ? House[i][rentersCsv] : ("")),
-            House[i][ownerSpawnAtHouse]
+            House[i][ownerSpawnAtHouse],
+            House[i][interiorId],
+            House[i][safeBalance],
+            (House[i][inviteesCsv][0] ? House[i][inviteesCsv] : ("")),
+            House[i][inviteExpiresAt],
+            House[i][missedTaxCount]
         );
         fwrite(fh, line);
         saved++;
@@ -735,6 +933,11 @@ public LoadHouses()
         House[i][keysCsv][0] = '\0';
         House[i][rentersCsv][0] = '\0';
         House[i][ownerSpawnAtHouse] = false;
+        House[i][interiorId] = DEFAULT_INTERIOR_ID;
+        House[i][safeBalance] = 0;
+        House[i][inviteesCsv][0] = '\0';
+        House[i][inviteExpiresAt] = 0;
+        House[i][missedTaxCount] = 0;
     }
 
     if (!fexist(HOUSE_DATA_FILE))
@@ -750,14 +953,13 @@ public LoadHouses()
         return 0;
     }
 
-    new line[512];
+    new line[640];
     new count = 0;
 
     while (fgets(fh, line))
     {
-        // Expected:
-        // id|price|ex|ey|ez|ix|iy|iz|entrInt|world|owner|locked|name|rent|maxRenters|keysCsv|rentersCsv|ownerSpawn
-        new tmp[200];
+        // id|price|ex|ey|ez|ix|iy|iz|entrInt|world|owner|locked|name|rent|maxRenters|keysCsv|rentersCsv|ownerSpawn|interiorId|safe|invitees|inviteExpire|missedTax
+        new tmp[256];
         new id;
 
         if (!ParseToken(line, '|', 0, tmp, sizeof tmp)) continue;
@@ -775,29 +977,19 @@ public LoadHouses()
         if (ParseToken(line, '|', 7, tmp, sizeof tmp)) House[id][exitZ] = floatstr(tmp);
         if (ParseToken(line, '|', 8, tmp, sizeof tmp)) House[id][entranceInterior] = strval(tmp);
         if (ParseToken(line, '|', 9, tmp, sizeof tmp)) House[id][houseWorld] = strval(tmp);
-        if (ParseToken(line, '|', 10, tmp, sizeof tmp)) {
-            // Owner name may be empty
-            new ownerLen = strlen(tmp);
-            if (ownerLen > (MAX_NAME_LEN - 1)) ownerLen = (MAX_NAME_LEN - 1);
-            strmid(House[id][ownerName], tmp, 0, ownerLen);
-            House[id][ownerName][ownerLen] = '\0';
-        }
+        if (ParseToken(line, '|', 10, tmp, sizeof tmp)) { new l = strlen(tmp); if (l > (MAX_NAME_LEN - 1)) l = (MAX_NAME_LEN - 1); strmid(House[id][ownerName], tmp, 0, l); House[id][ownerName][l] = '\0'; }
         if (ParseToken(line, '|', 11, tmp, sizeof tmp)) House[id][isLocked] = (strval(tmp) != 0);
-        if (ParseToken(line, '|', 12, tmp, sizeof tmp)) {
-            new l = strlen(tmp); if (l > (MAX_HOUSE_NAME - 1)) l = (MAX_HOUSE_NAME - 1);
-            strmid(House[id][houseName], tmp, 0, l); House[id][houseName][l] = '\0';
-        }
+        if (ParseToken(line, '|', 12, tmp, sizeof tmp)) { new l = strlen(tmp); if (l > (MAX_HOUSE_NAME - 1)) l = (MAX_HOUSE_NAME - 1); strmid(House[id][houseName], tmp, 0, l); House[id][houseName][l] = '\0'; }
         if (ParseToken(line, '|', 13, tmp, sizeof tmp)) House[id][rentPrice] = strval(tmp);
         if (ParseToken(line, '|', 14, tmp, sizeof tmp)) House[id][maxRenters] = strval(tmp);
-        if (ParseToken(line, '|', 15, tmp, sizeof tmp)) {
-            new l = strlen(tmp); if (l > (MAX_CSV_LEN - 1)) l = (MAX_CSV_LEN - 1);
-            strmid(House[id][keysCsv], tmp, 0, l); House[id][keysCsv][l] = '\0';
-        }
-        if (ParseToken(line, '|', 16, tmp, sizeof tmp)) {
-            new l = strlen(tmp); if (l > (MAX_CSV_LEN - 1)) l = (MAX_CSV_LEN - 1);
-            strmid(House[id][rentersCsv], tmp, 0, l); House[id][rentersCsv][l] = '\0';
-        }
+        if (ParseToken(line, '|', 15, tmp, sizeof tmp)) { new l = strlen(tmp); if (l > (MAX_CSV_LEN - 1)) l = (MAX_CSV_LEN - 1); strmid(House[id][keysCsv], tmp, 0, l); House[id][keysCsv][l] = '\0'; }
+        if (ParseToken(line, '|', 16, tmp, sizeof tmp)) { new l = strlen(tmp); if (l > (MAX_CSV_LEN - 1)) l = (MAX_CSV_LEN - 1); strmid(House[id][rentersCsv], tmp, 0, l); House[id][rentersCsv][l] = '\0'; }
         if (ParseToken(line, '|', 17, tmp, sizeof tmp)) House[id][ownerSpawnAtHouse] = (strval(tmp) != 0);
+        if (ParseToken(line, '|', 18, tmp, sizeof tmp)) House[id][interiorId] = strval(tmp);
+        if (ParseToken(line, '|', 19, tmp, sizeof tmp)) House[id][safeBalance] = strval(tmp);
+        if (ParseToken(line, '|', 20, tmp, sizeof tmp)) { new l = strlen(tmp); if (l > (MAX_CSV_LEN - 1)) l = (MAX_CSV_LEN - 1); strmid(House[id][inviteesCsv], tmp, 0, l); House[id][inviteesCsv][l] = '\0'; }
+        if (ParseToken(line, '|', 21, tmp, sizeof tmp)) House[id][inviteExpiresAt] = strval(tmp);
+        if (ParseToken(line, '|', 22, tmp, sizeof tmp)) House[id][missedTaxCount] = strval(tmp);
 
         UpdateHouseVisuals(id);
         count++;

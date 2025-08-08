@@ -1,6 +1,6 @@
 # HouseSystem (SA-MP Pawn)
 
-Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, com foco em Roleplay.
+Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, focado em Roleplay.
 
 ## Recursos
 - Criar/remover casas (admin RCON)
@@ -13,22 +13,26 @@ Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, com f
 - Campainha (notifica o dono online)
 - Ajustar ponto de entrada/saída
 - Spawn do dono na casa (toggle)
+- Seleção de interior e posição interna
+- Convites temporários para entrada
+- Cofre da casa (depósito/saque/saldo) com aluguel indo para o cofre
+- Imposto de manutenção automático (usa cofre, depois o dono; com penhora após inadimplência)
 - Persistência em arquivo (`scriptfiles/HouseSystem/houses.db`)
 
 ## Comandos
 - Básico: `/hhelp`, `/hcreate [preco]` (admin), `/hremove` (admin), `/hbuy`, `/hsell`, `/hlock`, `/henter`, `/hexit`, `/hinfo`
 - RP/Extras:
-  - `/hname [nome]`: define o nome da casa
-  - `/hkey add [nick]` / `/hkey del [nick]`: gerencia chaves
-  - `/hkeys`: lista quem tem chave
-  - `/hrentprice [valor]`: define o aluguel (0 desliga)
-  - `/hmaxrenters [n]`: define o número de vagas de aluguel
-  - `/rentroom`: aluga um quarto
-  - `/unrent`: encerra o aluguel
-  - `/hbell`: toca a campainha
-  - `/hsetentrance`: define a entrada (use na porta externa)
-  - `/hsetexit`: define a saída/interior (use dentro da casa)
-  - `/hsetspawn`: alterna spawn do dono na casa
+  - `/hname [nome]`
+  - `/hkey add [nick]` / `/hkey del [nick]`, `/hkeys`
+  - `/hrentprice [valor]`, `/hmaxrenters [n]`
+  - `/rentroom`, `/unrent`
+  - `/hbell`
+  - `/hsetentrance`, `/hsetexit`, `/hsetspawn`
+  - `/hintlist`, `/hinterior [id]`
+  - `/hsafe [deposit|withdraw|balance] [valor]`
+  - `/hinvite [nick]`
+  - `/hevict [nick]`, `/hevictall`
+  - `/htransfer [nick]`
 
 ## Instalação
 1. Copie `filterscripts/HouseSystem.pwn` para a pasta do seu servidor SA-MP.
@@ -38,6 +42,7 @@ Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, com f
 5. Inicie o servidor.
 
 ## Ajustes
-- Altere `ALLOW_MULTIPLE_HOUSES` para permitir múltiplas casas por jogador.
-- Ajuste `PAYDAY_INTERVAL_MS` para definir o intervalo de cobrança de aluguel.
-- Modifique `DEFAULT_INTERIOR_ID` e coordenadas padrão de interior conforme desejar.
+- `ALLOW_MULTIPLE_HOUSES`: permitir múltiplas casas por jogador.
+- `PAYDAY_INTERVAL_MS`: intervalo do payday (cobrança de aluguel e impostos).
+- `MAINTENANCE_TAX_PER_PAYDAY`, `MAX_MISSED_TAXES`: valores do imposto e limite de inadimplências.
+- `DEFAULT_INTERIOR_ID` e coordenadas padrão de interior.
