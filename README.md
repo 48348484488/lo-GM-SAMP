@@ -1,24 +1,34 @@
 # HouseSystem (SA-MP Pawn)
 
-Este projeto cria um filterscript Pawn com um sistema simples de casas para SA-MP.
+Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, com foco em Roleplay.
 
 ## Recursos
 - Criar/remover casas (admin RCON)
-- Comprar/vender casas
-- Trancar/destrancar
+- Comprar/vender casas (limite de 1 por jogador por padrão)
+- Trancar/destrancar portas
 - Entrar/sair
+- Nome da casa personalizável
+- Sistema de chaves (add/del/listar)
+- Aluguel de quartos (preço, número máximo de inquilinos, cobrança a cada payday)
+- Campainha (notifica o dono online)
+- Ajustar ponto de entrada/saída
+- Spawn do dono na casa (toggle)
 - Persistência em arquivo (`scriptfiles/HouseSystem/houses.db`)
 
 ## Comandos
-- /hhelp
-- /hcreate [preco] (admin)
-- /hremove (admin)
-- /hbuy
-- /hsell
-- /hlock
-- /henter
-- /hexit
-- /hinfo
+- Básico: `/hhelp`, `/hcreate [preco]` (admin), `/hremove` (admin), `/hbuy`, `/hsell`, `/hlock`, `/henter`, `/hexit`, `/hinfo`
+- RP/Extras:
+  - `/hname [nome]`: define o nome da casa
+  - `/hkey add [nick]` / `/hkey del [nick]`: gerencia chaves
+  - `/hkeys`: lista quem tem chave
+  - `/hrentprice [valor]`: define o aluguel (0 desliga)
+  - `/hmaxrenters [n]`: define o número de vagas de aluguel
+  - `/rentroom`: aluga um quarto
+  - `/unrent`: encerra o aluguel
+  - `/hbell`: toca a campainha
+  - `/hsetentrance`: define a entrada (use na porta externa)
+  - `/hsetexit`: define a saída/interior (use dentro da casa)
+  - `/hsetspawn`: alterna spawn do dono na casa
 
 ## Instalação
 1. Copie `filterscripts/HouseSystem.pwn` para a pasta do seu servidor SA-MP.
@@ -27,6 +37,7 @@ Este projeto cria um filterscript Pawn com um sistema simples de casas para SA-M
 4. No `server.cfg`, adicione em `filterscripts`: `filterscripts HouseSystem` (ou inclua junto de outros FS).
 5. Inicie o servidor.
 
-## Observações
-- O interior padrão é o ID 3. Ajuste as constantes `DEFAULT_INTERIOR_ID` e coordenadas no topo do arquivo conforme desejar.
-- Apenas admins RCON podem criar/remover casas por padrão. Altere `HOUSE_ADMIN_RCON_ONLY` se quiser liberar.
+## Ajustes
+- Altere `ALLOW_MULTIPLE_HOUSES` para permitir múltiplas casas por jogador.
+- Ajuste `PAYDAY_INTERVAL_MS` para definir o intervalo de cobrança de aluguel.
+- Modifique `DEFAULT_INTERIOR_ID` e coordenadas padrão de interior conforme desejar.
