@@ -1,6 +1,18 @@
 # HouseSystem (SA-MP Pawn)
 
-Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, focado em Roleplay.
+Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, focado em Roleplay. Agora modularizado em arquivos menores.
+
+## Arquitetura (módulos)
+- `filterscripts/HouseSystem_Main.pwn`: arquivo principal (inclui os módulos abaixo)
+- `filterscripts/HouseSystemInc/HouseConfig.inc`: configurações/constantes
+- `filterscripts/HouseSystemInc/HouseTypes.inc`: tipos e variáveis globais
+- `filterscripts/HouseSystemInc/HouseCSV.inc`: helpers de listas CSV
+- `filterscripts/HouseSystemInc/HouseUtil.inc`: utilitários (permissões/admin)
+- `filterscripts/HouseSystemInc/HousePersistence.inc`: salvar/carregar arquivo
+- `filterscripts/HouseSystemInc/HouseCore.inc`: lógica central (visual, payday, etc.)
+- `filterscripts/HouseSystemInc/HouseAdmin.inc`: comandos administrativos
+
+Observação: o arquivo antigo `filterscripts/HouseSystem.pwn` permanece como versão monolítica, mas recomendo usar o modular.
 
 ## Recursos
 - Criar/remover casas (admin RCON)
@@ -33,12 +45,17 @@ Este projeto cria um filterscript Pawn com um sistema de casas para SA-MP, focad
   - `/hinvite [nick]`
   - `/hevict [nick]`, `/hevictall`
   - `/htransfer [nick]`
+- Administração (RCON):
+  - `/hlist` (lista todas as casas)
+  - `/hgoto [id]` (teleporta até a entrada)
+  - `/hsetprice [id] [preco]`
+  - `/hfind [termo]` (procura por nome/dono)
 
 ## Instalação
-1. Copie `filterscripts/HouseSystem.pwn` para a pasta do seu servidor SA-MP.
-2. Compile com `pawncc` gerando `HouseSystem.amx`.
+1. Copie `filterscripts/HouseSystem_Main.pwn` e a pasta `filterscripts/HouseSystemInc/` para seu servidor SA-MP.
+2. Compile `filterscripts/HouseSystem_Main.pwn` com `pawncc` para gerar `HouseSystem_Main.amx`.
 3. Garanta que exista a pasta `scriptfiles/HouseSystem/`.
-4. No `server.cfg`, adicione em `filterscripts`: `filterscripts HouseSystem` (ou inclua junto de outros FS).
+4. No `server.cfg`, adicione em `filterscripts`: `filterscripts HouseSystem_Main`.
 5. Inicie o servidor.
 
 ## Ajustes
